@@ -130,6 +130,8 @@ def shinobi_year(realm):
                 head.titles.append(f"{SHINOBI_HEAD} of {cl.name} from year {y}")
                 realm.say(f"{realm.who(head)} takes the veil as {SHINOBI_HEAD} of {cl.name}, master of "
                           f"{technique(head)[1]}.", minor=True)
+    contracts_year(realm)
+    clan_wars(realm)
     feuds(realm)
 
 
@@ -143,15 +145,19 @@ def train(realm, c, cl):
     use(realm, c, "Blade", 0.8)
     if rng.random() < 0.12 * speed:
         n = c.natures[int(rng.integers(len(c.natures)))]
-        if c.nature_lv[n] < 5 and c.ki >= 40 * c.nature_lv[n] ** 1.6:
+        if c.nature_lv[n] < 5 and c.ki >= 40 * c.nature_lv[n] ** 1.6 and (c.nature_lv[n] < 4 or may_trump(realm, c, cl)):
             c.nature_lv[n] += 1
-            if c.nature_lv[n] >= 4:
-                realm.say(f"{realm.who(c)} of {cl.name} masters {NATURES[n][c.nature_lv[n] - 1]}, a "
-                          f"tier-{ROMAN[c.nature_lv[n]]} {n} technique.", minor=c.nature_lv[n] < 5)
+            if c.nature_lv[n] == 5:
+                announce_trump(realm, c, cl, NATURES[n][4])
+            if c.nature_lv[n] == 4:
+                realm.say(f"{realm.who(c)} of {cl.name} masters {NATURES[n][3]}, a tier-IV {n} technique.",
+                          minor=True)
     if rng.random() < 0.1 * speed:
         a = str(rng.choice(list(c.arts)))
-        if c.arts[a] < 5 and c.ki >= 30 * (c.arts[a] + 1) ** 1.5:
+        if c.arts[a] < 5 and c.ki >= 30 * (c.arts[a] + 1) ** 1.5 and (c.arts[a] < 4 or may_trump(realm, c, cl)):
             c.arts[a] += 1
+            if c.arts[a] == 5:
+                announce_trump(realm, c, cl, ARTS[a][4])
             if a == "Summoning" and c.arts[a] >= 3:
                 realm.say(f"{realm.who(c)} signs the pact of {cl.pact} in blood.", minor=True)
     if "Forbidden" not in c.arts and "ambitious" in c.personality and c.ki > 300 and rng.random() < 0.02:
@@ -253,8 +259,8 @@ def feuds(realm):
     A, B = realm.clans[int(a)], realm.clans[int(b)]
     if not A.members or not B.members:
         return
-    ca = max((realm.chars[m] for m in A.members), key=shinobi_power)
-    cb = max((realm.chars[m] for m in B.members), key=shinobi_power)
+    ca = target_in(realm, A)
+    cb = target_in(realm, B)
     pa, pb = shinobi_power(ca), shinobi_power(cb)
     win, lose = (ca, cb) if rng.random() < pa / (pa + pb) else (cb, ca)
     wc = realm.clans[win.clan]
@@ -263,3 +269,185 @@ def feuds(realm):
     from .crafts import gain_fame
     gain_fame(realm, win, "shinobi", 60)
     realm.kill(lose, f"fell in a clan feud to {win.full_name()}")
+    wc.standing = getattr(wc, "standing", 10.0) + 15
+    lc = realm.clans[lose.clan] if lose.clan is not None else None
+    if lc is not None:
+        lc.standing = getattr(lc, "standing", 10.0) * 0.85
+    steal_scroll(realm, win, lose, wc)
+
+
+# ---------------------------------------------------------------- trump cards, contracts, clan wars
+TRUMP_CAP = 2
+
+
+def trumps(realm, cl):
+    return [realm.chars[m] for m in cl.members if realm.chars[m].alive and
+            (5 in realm.chars[m].nature_lv.values() or 5 in realm.chars[m].arts.values())]
+
+
+def may_trump(realm, c, cl):
+    """A tier-V technique is a clan's trump card: only a Master or above learns one, and a clan keeps two at most."""
+    if 5 in c.nature_lv.values() or 5 in c.arts.values():
+        return False                                                     # one trump card to a shinobi
+    return (c.srank >= 3 or (c.srank >= 2 and cl.head == c.id)) and len(trumps(realm, cl)) < TRUMP_CAP
+
+
+def announce_trump(realm, c, cl, name):
+    realm.say(f"**A trump card.** {realm.who(c)} of {cl.name} masters {name}, a tier-V technique the clan will "
+              f"guard with their lives.")
+
+
+def target_in(realm, cl):
+    """Who a rival clan goes after: a trump-card holder if they have one, otherwise the strongest."""
+    t = trumps(realm, cl)
+    pool = t or [realm.chars[m] for m in cl.members]
+    return max(pool, key=shinobi_power)
+
+
+def steal_scroll(realm, win, lose, wc):
+    """From the body of a fallen trump card, the scroll of their technique, if the victor may hold one."""
+    best = [(n, 5) for n, lv in lose.nature_lv.items() if lv == 5] + [(a, 5) for a, lv in lose.arts.items() if lv == 5]
+    if not best or not may_trump(realm, win, wc) or realm.rng.random() > 0.35:
+        return
+    n, _ = best[0]
+    if n in NATURES and n in win.nature_lv:
+        win.nature_lv[n] = 5
+        tech = NATURES[n][4]
+    elif n in ARTS:
+        win.arts[n] = 5
+        tech = ARTS[n][4]
+    else:
+        return
+    realm.say(f"{realm.who(win)} takes the scroll of {tech} from the body of {lose.name}; it belongs to {wc.name} now.")
+
+
+def region_of(realm, pos):
+    return int(realm.landmass[pos])
+
+
+def contracts_year(realm):
+    """Crowns and towns post shinobi work; the clans near enough bid for it; the winner does it, the losers resent it."""
+    from .events import book
+    rng = realm.rng
+    clans = [cl for cl in realm.clans if cl.members]
+    if not clans:
+        return
+    for cl in clans:
+        cl.standing = getattr(cl, "standing", 10.0) * 0.98 + 3 * len(trumps(realm, cl))
+        cl.holds = getattr(cl, "holds", {})
+    jobs = []
+    for k in realm.kingdoms:
+        if realm.extinct[k.id] or k.ruler is None:
+            continue
+        seat = realm.capital_of(k.id)
+        if seat is None:
+            continue
+        revenue = max(1.0, getattr(k, "income", 0.0) * getattr(k, "tax_now", 0.3))
+        foes = [o for o in range(realm.npol) if realm.war[k.id, o]]
+        if foes and rng.random() < 0.4:
+            jobs.append(("spy", k, seat, 0.3 * revenue, int(rng.choice(foes))))
+        r = realm.chars.get(k.ruler)
+        if (getattr(k, "security", 0) > 30 or (r is not None and "paranoid" in r.personality)) and rng.random() < 0.3:
+            jobs.append(("guard", k, seat, 0.2 * revenue, None))
+    g = getattr(realm, "guild", None)
+    if g is not None:
+        for q in list(g["quests"].values()):
+            t = realm.by_id.get(q["target"][1]) if q["kind"] == "escort" else None
+            if t is not None and q["taken"] != realm.year and t.wealth > 8 * q["reward"] and rng.random() < 0.4:
+                q["taken"] = realm.year
+                jobs.append(("escort", realm.kingdoms[t.faction], t, 2 * q["reward"], q["id"]))
+    for kind, k, place, fee, extra in jobs:
+        if k.gold < fee and kind != "escort":
+            continue
+        near = [cl for cl in clans if math.hypot(cl.pos[0] - place.pos[0], cl.pos[1] - place.pos[1]) < 80]
+        if not near:
+            continue
+        reg = region_of(realm, place.pos)
+        bids = sorted(near, key=lambda cl: -(getattr(cl, "standing", 10.0) + 5 * cl.holds.get(reg, 0)) ** 0.5
+                      * shinobi_power(realm.chars[cl.head]) ** 0.3 * rng.uniform(0.6, 1.4) if cl.head in realm.chars
+                      else 0)
+        cl = bids[0]
+        for loser in bids[1:]:                                           # the losers remember who undercut them
+            if reg not in getattr(loser, "holds", {}) or reg not in cl.holds:
+                continue                                                 # only where both already work the land
+            key = (min(cl.id, loser.id), max(cl.id, loser.id))
+            realm.clan_rivalry = getattr(realm, "clan_rivalry", {})
+            realm.clan_rivalry[key] = realm.clan_rivalry.get(key, 0.0) + 0.5
+        agent = target_in(realm, cl) if kind != "guard" else max((realm.chars[m] for m in cl.members), key=shinobi_power)
+        ok = rng.random() < (0.85 if kind == "escort" else 0.85 + 0.03 * agent.srank)
+        if kind != "escort":
+            k.gold -= fee
+            book(realm, k.id, "shinobi", -fee, f"{cl.name}: {kind}")
+        else:
+            place.wealth -= fee
+            if g is not None and extra in g["quests"]:
+                del g["quests"][extra]
+        agent.gold += fee * 0.6
+        cl.gold += fee * 0.4
+        cl.holds[reg] = cl.holds.get(reg, 0) + 1
+        if ok:
+            cl.standing = getattr(cl, "standing", 10.0) + 2
+            if kind == "spy":
+                k.battle_mult = getattr(k, "battle_mult", 1.0) * 1.1        # they know where the enemy will be
+            elif kind == "guard":
+                k.security = getattr(k, "security", 0.0) + 20
+            else:
+                place.wealth += fee * 3
+        else:
+            cl.standing = getattr(cl, "standing", 10.0) * 0.9
+            if kind == "spy" and rng.random() < 0.35:                    # most failures are quiet; some are caught
+                realm.relation[k.id, extra] -= 15
+                realm.relation[extra, k.id] -= 15
+                realm.say(f"A spy of {cl.name} in the pay of {k.name} is taken in the court of "
+                          f"{realm.kingdoms[extra].name}.", minor=True)
+    first = max(clans, key=lambda cl: getattr(cl, "standing", 0.0))
+    cur = next((cl for cl in clans if cl.id == getattr(realm, "first_clan", None)), None)
+    if getattr(realm, "first_clan", None) != first.id and getattr(first, "standing", 0) > 40 and \
+            (cur is None or first.standing > 1.3 * getattr(cur, "standing", 0.0)):     # it must clearly overtake
+        realm.first_clan = first.id
+        realm.say(f"**{first.name} is first among the shinobi clans** now: the richest contracts go to them.")
+
+
+def clan_wars(realm):
+    """Clans that keep undercutting each other in the same lands go to war for them; it ends when one side breaks."""
+    rng = realm.rng
+    wars = getattr(realm, "clan_war", None)
+    if wars is None:
+        wars = realm.clan_war = {}
+    riv = getattr(realm, "clan_rivalry", {})
+    for key, v in list(riv.items()):
+        riv[key] = v * 0.9
+        if key not in wars and v >= 8 and getattr(realm, "clan_truce", {}).get(key, 0) <= realm.year:
+            a, b = (realm.clans[i] for i in key)
+            if a.members and b.members:
+                wars[key] = realm.year
+                realm.say(f"**A clan war.** {a.name} and {b.name} have undercut each other once too often; the "
+                          f"passes between them close, and the contracts of the land go to whoever is left.")
+    for key, since in list(wars.items()):
+        a, b = (realm.clans[i] for i in key)
+        if not a.members or not b.members or realm.year - since > 15:
+            win = a if getattr(a, "standing", 0) >= getattr(b, "standing", 0) else b
+            lose = b if win is a else a
+            for reg in list(getattr(lose, "holds", {})):
+                win.holds[reg] = win.holds.get(reg, 0) + lose.holds.pop(reg)
+            riv[key] = 0.0
+            del wars[key]
+            realm.clan_truce = getattr(realm, "clan_truce", {})
+            realm.clan_truce[key] = realm.year + 20                          # an uneasy truce
+            realm.say(f"The clan war ends: {win.name} holds the contracts of the land, and {lose.name} "
+                      f"{'is no more' if not lose.members else 'withdraws into the hills'}.")
+            continue
+        if rng.random() < 0.5:                                            # a duel in the passes, aimed at their best
+            ca, cb = target_in(realm, a), target_in(realm, b)
+            pa, pb = shinobi_power(ca), shinobi_power(cb)
+            win, lose = (ca, cb) if rng.random() < pa / (pa + pb) else (cb, ca)
+            wc = realm.clans[win.clan]
+            realm.say(f"In the clan war, {realm.who(win)} of {wc.name} meets {realm.who(lose)}; "
+                      f"{technique(win)[1]} answers {technique(lose)[1]}, and {lose.name} does not come home.",
+                      minor=not (5 in lose.nature_lv.values() or 5 in lose.arts.values()))
+            realm.kill(lose, f"fell in the clan war to {win.full_name()}")
+            wc.standing = getattr(wc, "standing", 10.0) + 10
+            lc = realm.clans[lose.clan] if lose.clan is not None else None
+            if lc is not None:
+                lc.standing = getattr(lc, "standing", 10.0) * 0.85
+            steal_scroll(realm, win, lose, wc)
