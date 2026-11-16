@@ -467,7 +467,7 @@ def money_year(realm):
         steward = realm.chars.get(k.council.get("steward")) if getattr(k, "council", None) else None
         ste = steward.attr("ste") if steward is not None else r.attr("ste") * 0.7
         mint = getattr(k, "mint_skill", 0.0)                           # a good Master of the Mint: honest weights, full royalties
-        k.collect = min(1.2, 0.75 + 0.02 * ste + 0.05 * min(1.0, mint))
+        k.collect = min(1.2, 0.75 + 0.02 * ste + 0.05 * min(1.0, mint)) * (1 - 0.5 * getattr(k, "domain_penalty", 0.0))
         if st == 0:                                                     # barter: no coin, no lenders
             floor = -max(20.0, 0.5 * k.income)
             if k.gold < floor:

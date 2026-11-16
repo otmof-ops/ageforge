@@ -450,6 +450,8 @@ def great_decisions(realm):
             if realm.lands[lid]["kind"] != "continent" or len(ts) < 40 or ("unite", lid) in done:
                 continue
             held = sum(1 for t in ts if t.faction == k.id or realm.kingdoms[t.faction] in subs)
+            if k.people == 3 and r.renown < 800:
+                continue                                                 # the warbands follow only a legend
             if held >= 0.75 * len(ts):
                 done.add(("unite", lid))
                 place = land_name(realm, lid)
@@ -499,9 +501,10 @@ def overstretch(realm):
         towns = realm.alive_towns(k.id)
         inn = realm.cultures[k.people].innovations
         admin = 15 * ("Written Law" in inn) + 25 * ("Royal Chancery" in inn) + 40 * ("Bureaucracy" in inn)
+        orc = k.people == 3
         cap = (COHESION.get(getattr(k, "gov", "tribal"), 30) + admin) * (1 + (r.attr("dip") + r.attr("ste")) / 40) \
-            * max(0.4, (r.legitimacy or 50) / 60)
-        if len(towns) <= cap or rng.random() > 0.05 * (len(towns) / cap - 1):
+            * max(0.4, (r.legitimacy or 50) / 60) * (0.45 if orc else 1.0)
+        if len(towns) <= cap or rng.random() > 0.05 * (len(towns) / cap - 1) * (3 if orc else 1):
             continue
         seat = realm.capital_of(k.id)
         if seat is None:
@@ -509,7 +512,7 @@ def overstretch(realm):
         held = [(dk, d) for dk, d in realm.duchies.items() if d["ctrl"] == k.id and d["holder"] not in (None, r.id)
                 and d["holder"] in realm.chars and realm.chars[d["holder"]].alive]
         held = [(dk, d) for dk, d in held if sum(getattr(t, "duchy", None) == dk for t in towns) >= 3
-                and {"ambitious", "greedy", "arrogant", "vengeful"} & realm.chars[d["holder"]].personality]
+                and (orc or {"ambitious", "greedy", "arrogant", "vengeful"} & realm.chars[d["holder"]].personality)]
         if not held:
             continue
         far = lambda dk: min(dist_xy(t.pos, seat.pos) for t in towns if getattr(t, "duchy", None) == dk)
@@ -520,12 +523,75 @@ def overstretch(realm):
         secede(realm, k, {dk}, leader, 0)
 
 
+DOMAIN_BASE = [6, 5, 6, 3]                                              # orcs least of all
+RANK_DOMAIN = {"tribe": 0, "chiefdom": 1, "duchy": 2, "kingdom": 3, "empire": 4}
+
+
+def domain_year(realm):
+    """A ruler can hold only so many towns in their own hands (their people, stewardship, title and the realm's
+    administration set how many). Beyond that, the excess yields little in taxes and the ruler must give lands out."""
+    from .titles import give_duchy
+    y = realm.year
+    for k in realm.kingdoms:
+        if realm.extinct[k.id] or k.ruler is None:
+            continue
+        r = realm.chars[k.ruler]
+        inn = realm.cultures[k.people].innovations
+        limit = DOMAIN_BASE[k.people] + r.attr("ste") // 5 + RANK_DOMAIN.get(k.rank, 1) + ("Written Law" in inn) \
+            + 2 * ("Royal Chancery" in inn) + 3 * ("Bureaucracy" in inn)
+        towns = realm.alive_towns(k.id)
+        mine = {dk for dk, d in realm.duchies.items() if d["ctrl"] == k.id and d["holder"] in (None, r.id)}
+        held = sum(1 for t in towns if getattr(t, "duchy", None) in mine)
+        k.domain, k.domain_limit = held, limit
+        over = max(0, held - limit)
+        k.domain_penalty = min(1.0, over / max(1, limit))
+        if not over:
+            continue
+        seat = realm.capital_of(k.id)
+        vacant = [dk for dk in mine if realm.duchies[dk]["holder"] is None and (seat is None or dk != seat.duchy)]
+        cands = [realm.chars[i] for i in realm.member_ids(k.id) if realm.chars[i].adult(y)
+                 and realm.chars[i].id != r.id and not realm.chars[i].undead
+                 and len(getattr(realm.chars[i], "duchies", [])) < 1]
+        for dk in vacant:
+            if not cands:
+                break
+            c = max(cands, key=lambda c: c.attr("ste") + c.attr("mar"))
+            cands.remove(c)
+            give_duchy(realm, c, dk, realm.duchies[dk], k)
+
+
+def strong_eat_weak(realm):
+    """Among the warbands the strong rule the weak: a warband of three towns or fewer, beside an orc warband three
+    times its size that it is at odds with, is beaten into it. So warbands swell, their warchiefs die, the
+    inheritance is divided, and it begins again."""
+    from .civics import absorb
+    rng = realm.rng
+    orcs = [k for k in realm.kingdoms if not realm.extinct[k.id] and k.people == 3 and k.ruler is not None]
+    size = {k.id: len(realm.alive_towns(k.id)) for k in orcs}
+    lands = {k.id: {t.landmass for t in realm.alive_towns(k.id)} for k in orcs}
+    for small in orcs:
+        if realm.extinct[small.id] or not 0 < size[small.id] <= 3 or rng.random() > 0.15:
+            continue
+        bigger = [b for b in orcs if b is not small and not realm.extinct[b.id] and size[b.id] >= 3 * size[small.id]
+                  and lands[b.id] & lands[small.id] and (realm.war[b.id, small.id] or realm.relation[b.id, small.id] < 0)]
+        if not bigger:
+            continue
+        b = max(bigger, key=lambda b: size[b.id])
+        loser = realm.chars.get(small.ruler)
+        absorb(realm, b, small)
+        size[b.id] += size[small.id]
+        realm.say(f"{realm.who(realm.chars[b.ruler])} beats {small.name} into the warband"
+                  + (f"; {loser.full_name()} kneels or dies." if loser is not None else "."), minor=size[b.id] < 20)
+
+
 def dist_xy(a, b):
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
 
 def statecraft_year(realm):
     last_stands(realm)
+    domain_year(realm)
+    strong_eat_weak(realm)
     overstretch(realm)
     _statecraft_year(realm)
 

@@ -235,6 +235,34 @@ def succeed(realm, k, how):
         heir = civil_war(realm, k, heir, rival)
         reason = "after a war for the throne"
     crown(realm, k, heir, reason)
+    if old is not None:
+        partition(realm, k, old, heir)
+
+
+PARTITION = [0.35, 0.35, 0.35, 1.0]                                    # orc custom always divides the inheritance
+
+
+def partition(realm, k, old, heir):
+    """Tribal and clan custom divides a dead ruler's lands among their grown children: the heir keeps the seat, and
+    each other child takes a duchy as a realm of their own."""
+    if getattr(k, "gov", "tribal") not in ("tribal", "clan") or realm.rng.random() > PARTITION[k.people]:
+        return
+    kids = [realm.chars[i] for i in old.children if i in realm.chars]
+    kids = [c for c in kids if c.alive and c is not heir and c.adult(realm.year) and c.realm == k.id and not c.ruled]
+    if not kids:
+        return
+    seat = realm.capital_of(k.id)
+    towns = realm.alive_towns(k.id)
+    dks = sorted({t.duchy for t in towns if getattr(t, "duchy", None) and (seat is None or t.duchy != seat.duchy)},
+                 key=lambda dk: -sum(getattr(t, "duchy", None) == dk for t in towns))
+    from .titles import secede
+    shares = list(zip(kids, dks))
+    if not shares:
+        return
+    realm.say(f"**The inheritance is divided.** By the custom of {k.name}, the lands of {old.full_name()} are "
+              f"shared among their children: {', '.join(c.name for c, _ in shares)} each take a land of their own.")
+    for c, dk in shares:
+        secede(realm, k, {dk}, c, 0)
 
 
 def civil_war(realm, k, a, b):
@@ -282,7 +310,7 @@ def crown(realm, k, c, reason):
         c.hero = False
         realm.hero_ids.discard(c.id)
         reason += ", and gives up the adventurer's road for the crown"
-    title = RULER_TITLE[k.people][int(c.female)]
+    title = RULER_TITLE[c.people][int(c.female)]                     # a ruler is styled as their own people style them
     lead = "**A new dynasty.** " if new_dyn and len(k.reigns) > 1 else ""
     from .governance import on_crown
     on_crown(realm, k, c, reason)

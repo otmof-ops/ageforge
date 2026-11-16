@@ -190,7 +190,7 @@ def opinion(realm, duke, k, r, dk):
 
 
 def towns_of(realm, dks):
-    return [t for t in realm.alive_towns() if t.duchy in dks]
+    return [t for t in realm.alive_towns() if getattr(t, "duchy", None) in dks]
 
 
 def factions_year(realm):

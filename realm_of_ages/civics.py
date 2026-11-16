@@ -513,6 +513,8 @@ def confederate(realm, k, r):
         orul = realm.chars[o.ruler]
         if "ambitious" in orul.personality and rng.random() < 0.7:
             continue
+        if k.people == 3 and (realm.relation[k.id, o.id] < 60 or rng.random() > 0.2):
+            continue                                                     # one warchief seldom kneels to another
         absorb(realm, k, o)
         realm.say(f"The chief of {o.name}, {orul.full_name()}, swears to {realm.who(r)}; the two peoples are "
                   f"one now under {k.name}.")

@@ -334,6 +334,30 @@ class Realm:
             out += [s for s in self._moved if s.alive and s.faction == f and id(s) not in seen]
         return out
 
+    def house_ids(self, h):
+        """Ids of the living of house h, indexed once a year (the dead filtered out on reading)."""
+        idx = self.__dict__.get("_house_idx")
+        if idx is None or idx[0] != self.year:
+            by = {}
+            for i in self.living:
+                hh = self.chars[i].house
+                if hh is not None:
+                    by.setdefault(hh, []).append(i)
+            idx = self._house_idx = (self.year, by)
+        return [i for i in idx[1].get(h, ()) if i in self.living]
+
+    def outlaw_ids(self, f):
+        """Ids of the living thieves, assassins and bandits of realm f, indexed once a year."""
+        idx = self.__dict__.get("_outlaw_idx")
+        if idx is None or idx[0] != self.year:
+            by = {}
+            for i in self.living:
+                c = self.chars[i]
+                if c.profession in ("thief", "assassin", "bandit"):
+                    by.setdefault(c.realm, []).append(i)
+            idx = self._outlaw_idx = (self.year, by)
+        return [i for i in idx[1].get(f, ()) if i in self.living]
+
     def member_ids(self, f):
         """Ids of the living who serve realm f. Indexed once a year; anyone who changed realm since is re-checked."""
         idx = getattr(self, "_mem_idx", None)

@@ -9,7 +9,7 @@ rates calibrated on the medieval record (see calibration.md), with frontier town
 Goods and wealth depreciate, so wealth is a flow, not a pile; crowns tax income, and pay interest on what they
 borrow."""
 import numpy as np
-from scipy import ndimage
+from . import nd as ndimage
 
 from .data import FOOD
 

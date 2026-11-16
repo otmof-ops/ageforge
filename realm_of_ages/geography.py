@@ -1,7 +1,7 @@
 """A world of many continents and island chains, each landmass named, the seas named after the lands they
 wash. Distances and remoteness come from scipy's distance transforms, so the map can be very large."""
 import numpy as np
-from scipy import ndimage
+from . import nd as ndimage
 
 from .data import DESERT, FOREST, HILLS, MOUNTAIN, OCEAN, PLAINS, SWAMP
 

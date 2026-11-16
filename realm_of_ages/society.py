@@ -241,7 +241,7 @@ def caught(realm, c, home):
 
 def bounty_target(realm, h):
     best, bv = None, 50.0
-    for i in realm.living:
+    for i in realm.outlaw_ids(h.realm):
         c = realm.chars[i]
         if c.profession in ("thief", "assassin", "bandit") and c.bounty > bv and \
                 getattr(c, "jailed_until", 0) <= realm.year and c.realm == h.realm:
