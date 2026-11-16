@@ -125,7 +125,7 @@ def explore_year(realm):
 def discover(realm, f, land, by):
     realm.known[f].add(land["id"])
     k = realm.kingdoms[f]
-    first = not land["found_by"]
+    first = not land["found_by"] and not any(t.landmass == land["id"] for t in realm.alive_towns())
     land["found_by"][f] = realm.year
     k.discoveries.append((realm.year, land["id"], by.id if by is not None else None))
     who = realm.who(by) if by is not None else f"sailors of {k.name}"

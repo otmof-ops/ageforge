@@ -170,8 +170,10 @@ def train(realm, c):
         return
     for e in list(c.bend):
         before = c.bend[e]
-        c.bend[e] = min(100.0, before + rng.uniform(0.5, 2.5) * (1 - before / 110) * (1.5 if getattr(c, "concord", False)
-                                                                                        else 1.0))
+        from .characters import power_gate
+        top = {3: 49.9, 4: 74.9}.get(max(power_gate(c), power_gate(c, martial=True)), 100.0)   # Master and Grandmaster are rare
+        c.bend[e] = min(top, before + rng.uniform(0.5, 2.5) * (1 - before / 110) * (1.5 if getattr(c, "concord", False)
+                                                                                     else 1.0))
         tb, ta = bend_tier(before), bend_tier(c.bend[e])
         if ta > tb and ta >= 2:
             realm.say(f"{realm.who(c)} becomes a {BEND_TIER_NAMES[ta]} of {e}-bending, master of "
@@ -293,7 +295,7 @@ def concord_year(realm):
                   f"and the war ends.")
         rec["deeds"].append(f"year {y}: ended the war of the {realm.pname(i)} and the {realm.pname(j)}")
         gain_fame(realm, c, "concord", 150)
-    sov = [m for m in realm.monsters if m.alive and getattr(m, "title", None) == "Wyrm-Sovereign"]
+    sov = []                                    # the Concord no longer hunts dragons alone: dragons are raids for a party
     if sov and rng.random() < 0.3:
         m = sov[0]
         if rng.random() < pw / (pw + 0.6 * m.power):

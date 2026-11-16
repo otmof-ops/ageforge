@@ -577,7 +577,9 @@ def plots(realm, k):
         if o is k or not realm.war[k.realm, o.id] or realm.extinct[o.realm]:
             continue
         ospy = realm.chars.get(o.council["spymaster"])
-        if ospy is not None and rng.random() < min(0.01, 0.0008 * max(0.0, ospy.attr("intr") - 0.8 * guard)):
+        shield = 0.8 * guard + getattr(k, "security", 0.0) / 4             # guards and tasters the court has learned to keep
+        if ospy is not None and rng.random() < min(0.01, 0.0008 * max(0.0, ospy.attr("intr") - shield)):
+            k.security = getattr(k, "security", 0.0) + 40
             realm.say(f"{realm.who(r)} is assassinated by agents of {o.name}, at the word of {realm.who(ospy)}.")
             realm.kill(r, f"was assassinated by agents of {o.name}", quiet=True, by=realm.chars.get(o.ruler))
             return

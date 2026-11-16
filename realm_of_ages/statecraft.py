@@ -348,6 +348,8 @@ def last_stands(realm):
     for k in realm.kingdoms:
         if realm.extinct[k.id]:
             continue
+        r = realm.chars.get(k.ruler)                                     # a court's guard relaxes in quiet years
+        k.security = max(30.0 if r is not None and "paranoid" in r.personality else 0.0, getattr(k, "security", 0.0) * 0.97)
         n, top = held.get(k.people, 0), peak.get(k.people, 0)
         stand = top >= 10 and n <= max(8, 0.2 * top)
         if stand and not getattr(k, "last_stand", False):

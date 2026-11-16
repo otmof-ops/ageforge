@@ -13,7 +13,37 @@ CTX = {}                     # the running realm, so a person's power can see th
 
 
 def xp_needed(level):
-    return 10 * level ** 1.2
+    """Experience for the next level: past the twenties every level is a long road, so most heroes of the world
+    settle in their twenties and thirties, and the forties and beyond belong to legends."""
+    return 10 * level ** 1.2 * (1 + max(0, level - 25) / 5) ** 2
+
+
+def power_gate(c, martial=False):
+    """The highest tier of power a mortal can reach, magic or martial, by the world's own measure: three for anyone
+    capable; four for rare masters of talent and long training; five and six for the near-mythic, who need a gift of
+    power besides. Characters the player makes have no ordinary limit."""
+    d = c.__dict__
+    if d.get("custom"):
+        return 10
+    lv = c.level
+    if martial:
+        cap = PROWESS_CAP[c.people]
+        skill = c.prowess / max(1.0, cap)
+        gift = getattr(c, "gift", None) in ("Iron Skin", "Born Captain") or bool({"titanblood", "dragonblood"} & c.genetic)
+    else:
+        skill = c.eff_talent() / 10
+        gift = getattr(c, "gift", None) == "Mana Well" or bool({"starblood", "abyssblood"} & c.genetic) or \
+            any(it.special == "tier" for it in c.items)
+    g = 3
+    if skill >= 0.6 and lv >= 22:
+        g = 4
+        if skill >= 0.85 and lv >= 40 and gift:
+            g = 5
+            if skill >= 0.95 and lv >= 55:
+                g = 6
+    if d.get("concord"):
+        g = max(g, 5)
+    return g
 
 
 class House:
@@ -185,7 +215,7 @@ class Character:
         base = int(eff / 9) if "abyssblood" in self.genetic else min(int(eff / 9), int(self.eff_talent()))
         well = getattr(self, "gift", None) == "Mana Well"
         cap = self.tier_cap() + sum(1 for it in self.items if it.special == "tier") + well
-        limit = 10 if self.__dict__.get("custom") else 7                # no ordinary mortal casts above the seventh tier
+        limit = power_gate(self)                                        # the world's measure of a mortal
         return max(0, min(limit, cap, base + self.mods()["tier"] + well))
 
     def tier_cap(self):

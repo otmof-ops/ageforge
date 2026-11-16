@@ -162,7 +162,8 @@ def train(realm, c, cl):
     elif "Forbidden" in c.arts and c.arts["Forbidden"] < 5 and rng.random() < 0.05:
         c.arts["Forbidden"] += 1
         c.life -= 8
-    rank = min(4, int(shinobi_power(c) ** 0.5 / 9))
+    from .characters import power_gate
+    rank = min(int(shinobi_power(c) ** 0.5 / 9), {3: 2, 4: 3}.get(power_gate(c, martial=True), 4))
     if rank > c.srank:
         c.srank = rank
         if rank >= 3:
@@ -227,13 +228,14 @@ def mission(realm, c, cl):
         if not tgts:
             return
         t = tgts[int(rng.integers(len(tgts)))]
-        defence = t.cr() * (2 if t.undead else 1)
+        defence = t.cr() * (2 if t.undead else 1) + 10 * getattr(tk, "security", 0.0)
         if rng.random() < pw / (pw + 3 * defence + 500):
             c.gold += 400
             gain_fame(realm, c, "shinobi", 40)
             realm.say(f"{realm.who(t)} dies in the night with no wound but a needle-mark: {cl.name} has done "
                       f"{realm.pname(client)} work.", minor=tp != t.realm or t.id != tk.ruler)
             realm.kill(t, f"was killed by a shinobi of {cl.name}", quiet=True, by=realm.chars.get(realm.kingdoms[client].ruler))
+            tk.security = getattr(tk, "security", 0.0) + 40                 # the court hires guards and tasters
         else:
             dmg = rng.uniform(30, 100)
             c.hp -= dmg
