@@ -7,6 +7,7 @@
 use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, IntoPyArray};
 use pyo3::prelude::*;
 
+mod climate;
 mod geography;
 mod grid;
 mod people;

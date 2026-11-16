@@ -52,12 +52,14 @@ impl World {
         for i in 0..4 { for j in 0..i { let m = (relation[i][j] + relation[j][i]) / 2.0; relation[i][j] = m; relation[j][i] = m; } }
         let st = State { year: 0, rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
-                         owner: Grid::new(h, w, -1), relation, log: vec![] };
+                         owner: Grid::new(h, w, -1), relation, log: vec![],
+                         climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0 };
         let mut world = World { st };
         world.st.place_resources();
         world.st.place_ruins();
         world.st.place_capitals(8);
         world.compute_territory();
+        world.st.climate = crate::climate::Climate::setup(&world.st.map.terrain, &mut world.st.rng);
         world
     }
 
@@ -122,6 +124,16 @@ impl World {
         for (i, s) in SKILLS.iter().enumerate() { sk.set_item(*s, c.skills[i])?; }
         d.set_item("skills", sk)?;
         Ok(d)
+    }
+
+    /// Weather only, for checking the climate: runs `years` and returns (year, harvest, warmth, rain) means over land.
+    fn weather_years(&mut self, years: i64) -> Vec<(i64, f64, f64, f64)> {
+        for _ in 0..years { self.st.year += 1; self.st.weather_year(); }
+        self.st.climate.history.clone()
+    }
+
+    fn harvest<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
+        let c = &self.st.climate; arr(py, c.eh, c.ew, &c.harvest.v)
     }
 
     fn n_characters(&self) -> usize { self.st.chars.len() }

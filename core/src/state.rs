@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use crate::climate::Climate;
 use crate::geography::Map;
 use crate::grid::Grid;
 use crate::people::*;
@@ -23,9 +24,19 @@ pub struct State {
     pub owner: Grid<i64>,
     pub relation: [[f64; 4]; 4],
     pub log: Vec<(i64, bool, String)>, // (year, minor, text)
+    pub climate: Climate,
+    pub blight: i64,
 }
 
 impl State {
+    /// This year's weather and harvest.
+    pub fn weather_year(&mut self) {
+        let towns: Vec<((usize, usize), f64, String)> =
+            self.towns.iter().filter(|t| t.alive).map(|t| (t.pos, t.pop, t.name.clone())).collect();
+        let said = self.climate.year(self.year, &mut self.rng, &towns, self.blight > 0);
+        for (text, minor) in said { self.say(text, minor); }
+    }
+
     pub fn say(&mut self, text: String, minor: bool) {
         self.log.push((self.year, minor, text));
     }
