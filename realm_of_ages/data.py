@@ -180,7 +180,7 @@ GENETIC_FREQ = {"genius": 0.02, "quick": 0.06, "slow": 0.04, "strong": 0.06, "we
                 "fecund": 0.04, "silver-tongued": 0.04, "dull": 0.04, "keen-eyed": 0.05, "iron-boned": 0.03,
                 "beastspeaker": 0.006}
 POWER_GENES = {
-    "starblood": "breaks the tier cap of their people: the full ten tiers are open to them",
+    "starblood": "lifts the tier cap of their people by one, as far as the seventh tier and no further",
     "dragonblood": "breaks the level cap: they can climb past the hundredth level, to the hundred-and-thirtieth",
     "elderblood": "breaks the span of their people: they live three times as long",
     "titanblood": "breaks the prowess cap of their people, and strikes a third harder",

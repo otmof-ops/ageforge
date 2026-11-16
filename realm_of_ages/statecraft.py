@@ -482,8 +482,49 @@ def great_decisions(realm):
             realm.decisions.append((y, k.id, "proclaimed a hegemony"))
 
 
+COHESION = {"tribal": 12, "clan": 20, "feudal": 45, "theocracy": 40, "republic": 30, "administrative": 90}
+
+
+def overstretch(realm):
+    """A realm can hold only so much: chiefs and clans far from the seat drift away when it grows past what its form
+    of rule, its ruler's gifts and its legitimacy can hold together. Fast-growing tribal peoples feel it first."""
+    from .titles import secede
+    rng = realm.rng
+    for k in realm.kingdoms:
+        if realm.extinct[k.id] or k.ruler is None:
+            continue
+        r = realm.chars.get(k.ruler)
+        towns = realm.alive_towns(k.id)
+        inn = realm.cultures[k.people].innovations
+        admin = 15 * ("Written Law" in inn) + 25 * ("Royal Chancery" in inn) + 40 * ("Bureaucracy" in inn)
+        cap = (COHESION.get(getattr(k, "gov", "tribal"), 30) + admin) * (1 + (r.attr("dip") + r.attr("ste")) / 40) \
+            * max(0.4, (r.legitimacy or 50) / 60)
+        if len(towns) <= cap or rng.random() > 0.05 * (len(towns) / cap - 1):
+            continue
+        seat = realm.capital_of(k.id)
+        if seat is None:
+            continue
+        held = [(dk, d) for dk, d in realm.duchies.items() if d["ctrl"] == k.id and d["holder"] not in (None, r.id)
+                and d["holder"] in realm.chars and realm.chars[d["holder"]].alive]
+        held = [(dk, d) for dk, d in held if sum(getattr(t, "duchy", None) == dk for t in towns) >= 3
+                and {"ambitious", "greedy", "arrogant", "vengeful"} & realm.chars[d["holder"]].personality]
+        if not held:
+            continue
+        far = lambda dk: min(dist_xy(t.pos, seat.pos) for t in towns if getattr(t, "duchy", None) == dk)
+        dk, d = max(held, key=lambda x: far(x[0]))
+        leader = realm.chars[d["holder"]]
+        realm.say(f"**The realm frays.** {k.name} has grown past what {realm.who(r)} can hold; "
+                  f"{realm.who(leader)} takes {d['name']} and goes their own way.")
+        secede(realm, k, {dk}, leader, 0)
+
+
+def dist_xy(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
 def statecraft_year(realm):
     last_stands(realm)
+    overstretch(realm)
     _statecraft_year(realm)
 
 

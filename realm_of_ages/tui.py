@@ -151,6 +151,13 @@ class WorldScreen(Screen):
                 yield DataTable(id="classes", zebra_stripes=True)
                 yield Label("The richest people in the world, by everything they own")
                 yield DataTable(id="rich", zebra_stripes=True)
+            with TabPane("Guild", id="t-guild"), VerticalScroll():
+                yield Label("The Wardens' Hall: parties, by seal")
+                yield DataTable(id="parties", zebra_stripes=True)
+                yield Label("The quest board")
+                yield DataTable(id="quests", zebra_stripes=True)
+                yield Label("Lately done, failed or fled")
+                yield RichLog(id="questlog", wrap=True, max_lines=2000)
             with TabPane("Wars", id="t-wars"):
                 yield RichLog(id="wars", wrap=True, max_lines=3000)
             with TabPane("People", id="t-people"):
@@ -200,6 +207,7 @@ class WorldScreen(Screen):
         self.refresh_money()
         self.refresh_wars()
         self.refresh_econ()
+        self.refresh_guild()
         self.refresh_tracked()
         self.refresh_map()
         self.refresh_people()
@@ -287,6 +295,28 @@ class WorldScreen(Screen):
                          f"{ch.gold:,.0f}", ch.profession or ("ruler" if ch.ruled and ch.ruled[2] is None else
                                                               "lord" if getattr(ch, "lordships", None) else "-"),
                          str(ch.id))
+
+    def refresh_guild(self):
+        from .guild import SEALS, hall, party_rows, quest_rows
+        r = self.s.realm
+        t = self.query_one("#parties", DataTable)
+        t.clear(columns=True)
+        t.add_columns("Party", "Seal", "Members", "Quests done", "Lost", "Formed", "Who")
+        for row in party_rows(r):
+            t.add_row(*[str(x) for x in row])
+        q = self.query_one("#quests", DataTable)
+        q.clear(columns=True)
+        q.add_columns("Seal", "Kind", "Quest", "Reward", "Posted", "Expires")
+        for row in quest_rows(r)[:200]:
+            q.add_row(*[str(x) for x in row])
+        log = self.query_one("#questlog", RichLog)
+        log.clear()
+        for y, who, kind, title, rank, outcome, lost in hall(r)["log"][-400:]:
+            line = Text(f"{y:>5}  ", style="grey50")
+            line.append(f"[{SEALS[rank]}] ", style="bright_yellow" if rank >= 4 else "")
+            line.append(f"{who}: {title} -> {outcome}" + (f" ({lost} lost)" if lost else ""),
+                        style="green" if outcome in ("done", "slain") else "red" if outcome == "failed" else "")
+            log.write(line, expand=True)
 
     def refresh_wars(self):
         r = self.s.realm
@@ -378,7 +408,7 @@ class WorldScreen(Screen):
         """Logs are drawn at the width of the screen they are shown on, so draw them when their tab opens."""
         tab = ev.pane.id if getattr(ev, "pane", None) is not None else ""
         {"t-chron": self.refresh_chronicle, "t-money": self.refresh_money, "t-wars": self.refresh_wars,
-         "t-econ": self.refresh_econ,
+         "t-econ": self.refresh_econ, "t-guild": self.refresh_guild,
          "t-tracked": self.refresh_tracked, "t-map": self.refresh_map}.get(tab, lambda: None)()
 
     def on_select_changed(self, ev: Select.Changed):
