@@ -45,6 +45,10 @@ impl State {
         while self.relation.len() < n { self.relation.push(vec![0.0; n]); }
         for row in self.war.iter_mut() { row.resize(n, false); }
         while self.war.len() < n { self.war.push(vec![false; n]); }
+        for row in self.war_since.iter_mut() { row.resize(n, 0); }
+        while self.war_since.len() < n { self.war_since.push(vec![0; n]); }
+        for row in self.weariness.iter_mut() { row.resize(n, 0.0); }
+        while self.weariness.len() < n { self.weariness.push(vec![0.0; n]); }
         for row in self.truce.iter_mut() { row.resize(n, 0); }
         while self.truce.len() < n { self.truce.push(vec![0; n]); }
     }

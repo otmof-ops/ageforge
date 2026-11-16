@@ -21,16 +21,17 @@ impl State {
             let (tax, relief, people) = (self.realms[k].tax_now, self.realms[k].tax_relief > y, self.realms[k].people);
             let protect = self.realms[k].trade_protectionist;
             let tyranny = self.chars[r].tyranny;
-            let at_war = false; // wars: slice 4
+            let at_war = self.war[k].iter().any(|&w| w);
             for t in self.alive_towns_of(k) {
                 let guild = self.cultures[self.towns[t].culture].innovations.contains("Guild Charters");
                 let s = &mut self.towns[t];
                 let mp = s.mood_p.unwrap_or(10.0);
                 // (a town's faith and its lord join with slices 4 and 5: until then the ruler's faith is the town's)
-                let p = 12.0 - 120.0 * s.famine - 60.0 * s.sick_now - 60.0 * (tax - 0.25) - 6.0 * at_war as u8 as f64
+                let occupied = s.occupied_by != NONE;
+                let p = 12.0 - 120.0 * s.famine - if occupied { 20.0 } else { 0.0 } - 60.0 * s.sick_now - 60.0 * (tax - 0.25) - 6.0 * at_war as u8 as f64
                     - tyranny / 3.0 + if relief { 15.0 } else { 0.0 } + s.econ_mood
                     - if s.culture != people { 12.0 } else { 0.0 };
-                let b = 10.0 - 40.0 * s.crime - 40.0 * (tax - 0.25) - if protect { 15.0 } else { 0.0 };
+                let b = 10.0 + 3.0 * s.trade.min(10.0) - 40.0 * s.crime - 40.0 * (tax - 0.25) - if protect { 15.0 } else { 0.0 };
                 let mp = mp + 0.3 * (p - mp);
                 s.mood_p = Some(mp);
                 s.mood_b += 0.3 * (b - s.mood_b);
@@ -66,7 +67,7 @@ impl State {
             }
         }
         self.risings.push((self.year, t, k, why));
-        // (the rebel host takes the field with warfare, slice 4)
+        self.raise_rebels(k, t, leader, why);
         let text = format!("**A rising.** The peasants of {} rise against {} over {why}, led by {}.",
                            self.towns[t].name, self.realms[k].name, self.chars[leader].name);
         let minor = self.towns[t].pop < 1500.0;

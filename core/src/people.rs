@@ -65,6 +65,7 @@ pub struct Character {
     pub relations: Vec<(usize, bool)>,     // (whom, friend: true / rival: false)
     pub rival_ruler: usize,
     pub hooks: Vec<(usize, &'static str)>,
+    pub rival: usize,
     pub alive: bool,
     pub died: Option<i64>,
     pub cause: Option<String>,
@@ -172,6 +173,10 @@ pub struct Town {
     pub sick_now: f64,
     pub crime: f64,
     pub duchy: Option<DKey>,
+    pub lord: usize,
+    pub occupied_by: usize,
+    pub trade: f64,
+    pub guard: f64,
 }
 
 pub struct Epidemic {
@@ -217,6 +222,20 @@ pub struct Realm {
     pub agreement: f64,
     pub great_works: Vec<String>,
     pub held: Vec<usize>,                   // every resource held
+    pub home_land: i32,
+    pub known: Vec<i32>,
+    pub overlord: usize,
+    pub vassal_limit: f64,
+    pub domain_limit: f64,
+    pub over_vassals: f64,
+    pub domain_penalty: f64,
+    pub last_stand: bool,
+    pub security: f64,
+    pub realm_tier: i64,
+    pub fear_until: i64,
+    pub corrupt_seats: Vec<usize>,
+    pub done: Vec<(&'static str, i32)>,
+    pub great: Vec<String>,
     pub tax_relief: i64,
     pub regent: usize,
     pub taken: u32,
@@ -309,6 +328,35 @@ pub struct Duchy {
 pub struct KTitle {
     pub name: String,
     pub ctrl: usize,
+}
+
+pub struct War {
+    pub attacker: usize,
+    pub defender: usize,
+    pub cb: String,
+    pub goal_duchy: Option<DKey>,
+    pub subjugate: bool,
+    pub freedom: bool,
+    pub claimant: usize,
+    pub start: i64,
+    pub score: f64,
+}
+
+pub struct Army {
+    pub id: usize,
+    pub realm: usize,            // NONE for a rising
+    pub pos: (usize, usize),
+    pub men: f64,
+    pub quality: f64,
+    pub commander: usize,
+    pub morale: f64,
+    pub siege: f64,
+    pub rebel: bool,
+    pub rebel_of: usize,
+    pub home: usize,
+    pub name: String,
+    pub why: &'static str,
+    pub done: bool,
 }
 
 pub struct Reign {

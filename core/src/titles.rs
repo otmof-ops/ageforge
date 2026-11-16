@@ -155,6 +155,8 @@ impl State {
         }
     }
 
+    pub fn give_duchy_of(&mut self, c: usize, dk: DKey, k: usize) { self.give_duchy(c, dk, k, false); }
+
     fn give_duchy(&mut self, c: usize, dk: DKey, k: usize, inherited: bool) {
         let old = self.duchies[&dk].holder;
         if old != NONE { self.chars[old].duchies.retain(|&x| x != dk); }
@@ -356,7 +358,10 @@ impl State {
         self.new_realm(culture, name, format!("{} of {place}", PEOPLES[culture]), rank, gov, color, place.clone());
         let law = self.realms[k].law;
         let crown_law = self.realms[k].crown_law;
+        let (hl, known) = (self.towns[cap].landmass, self.realms[k].known.clone());
         let nk = &mut self.realms[nid];
+        nk.home_land = hl;
+        nk.known = known;
         nk.parent = k;
         nk.founded_year = self.year;
         nk.law = law;
@@ -390,7 +395,9 @@ impl State {
         self.realms.push(Realm { id, people, name, short, rank, gov, law: if people == 3 { "strongest" } else { "elective" }, color,
             ruler: NONE, house: NONE, regnal: vec![], reigns: vec![], place, extinct: false, growth_mult: 1.0, tax_now: 0.06,
             gold: 50.0, crown_law: 1, tolerant: true, expansionist: false, agenda: "unity", agenda_for: NONE, maa: vec![],
-                army_power: 0.0, garrison_bonus: 0.0, aggr: 1.0, reform: 0.0, agreement: 1.0, great_works: vec![], held: vec![], tax_relief: 0, regent: NONE, taken: 0, lost: 0, civil_wars: 0, physician: false,
+                army_power: 0.0, garrison_bonus: 0.0, aggr: 1.0, reform: 0.0, agreement: 1.0, great_works: vec![], held: vec![], home_land: -1, known: vec![], overlord: NONE,
+                vassal_limit: 0.0, domain_limit: 0.0, over_vassals: 0.0, domain_penalty: 0.0, last_stand: false, security: 0.0,
+                realm_tier: 0, fear_until: 0, corrupt_seats: vec![], done: vec![], great: vec![], tax_relief: 0, regent: NONE, taken: 0, lost: 0, civil_wars: 0, physician: false,
             parent: NONE, founded_year: self.year, ended: None, battle_mult: 1.0, warships: 4.0, ship_tier: 0, allies: vec![],
             factions: vec![], faction_since: vec![], ultimatum_cooldown: vec![], council: [NONE; 6], council_for: NONE,
             econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0, income: 0.0, real_gdp: 0.0,

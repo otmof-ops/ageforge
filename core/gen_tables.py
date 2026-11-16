@@ -133,6 +133,8 @@ out.append("pub const CLASS_SKILLS: [&[usize]; %d] = [%s];" % (len(classes), ", 
     "&[" + ", ".join(str(skills.index(s)) for s in data2.CLASS_SKILLS.get(c, [])) + "]" for c in classes)))
 leg = list(data.LEGACY)
 strs("LEGACY_KINDS", leg)
+strs("LEGACY_NAMES", [data.LEGACY[k][0] for k in leg])
+strs("ROMAN", data.ROMAN)
 nums("LEGACY_LEVELS", data.LEGACY_LEVELS); nums("HOUSE_LEGACY_LEVELS", data.HOUSE_LEGACY_LEVELS)
 nums("LEVEL_CAP_T", [data.LEVEL_CAP, data.BLOOD_LEVEL_CAP])
 

@@ -28,6 +28,16 @@ pub struct State {
     pub duchies: std::collections::BTreeMap<DKey, Duchy>,
     pub ktitles: std::collections::BTreeMap<DKey, KTitle>,
     pub breakaways: Vec<(i64, usize, usize, usize)>,
+    pub wars: Vec<War>,
+    pub war_since: Vec<Vec<i64>>,
+    pub weariness: Vec<Vec<f64>>,
+    pub armies: Vec<Army>,
+    pub next_army: usize,
+    pub war_log: Vec<(i64, String, String, String, i64, &'static str)>,
+    pub battles_fought: Vec<(i64, String, i64)>,
+    pub sieges_won: u32,
+    pub people_peak: [usize; 4],
+    pub recent_decl: Vec<((usize, String), i64)>,
     pub stats_defaults: Vec<(i64, usize)>,
     pub stats_forced: Vec<(i64, usize)>,
     pub mined: f64,
@@ -140,7 +150,7 @@ impl State {
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
                                cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
                                coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0, burghers: 0.08,
-                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None });
+                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0 });
         id
     }
 
@@ -267,7 +277,7 @@ impl State {
             hp: 100.0, renown: 0.0, branch: vec![], capstones: vec![], attributes, skills, legacy, legitimacy: None,
             tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, undead: false, built: 0,
             disgraced_until: 0, titles: vec![], memories: vec![], deeds: vec![], perks: vec![], skill_progress: [0.0; 8],
-            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, duchies: vec![], op_bias: None, view_noise: None, profession: None, lordships: vec![], happy: 0.0, relations: vec![], rival_ruler: NONE, hooks: vec![], alive: true, died: None, cause: None, home: NONE,
+            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, duchies: vec![], op_bias: None, view_noise: None, profession: None, lordships: vec![], happy: 0.0, relations: vec![], rival_ruler: NONE, hooks: vec![], rival: NONE, alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -506,7 +516,9 @@ impl State {
                 gov: "tribal", law: if f == 3 { "strongest" } else { "elective" }, color, ruler: NONE, house: NONE,
                 regnal: vec![], reigns: vec![], place: String::new(), extinct: false,
                 growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tolerant: true, expansionist: false, agenda: "unity", agenda_for: NONE, maa: vec![],
-                army_power: 0.0, garrison_bonus: 0.0, aggr: 1.0, reform: 0.0, agreement: 1.0, great_works: vec![], held: vec![], tax_relief: 0, regent: NONE, taken: 0, lost: 0,
+                army_power: 0.0, garrison_bonus: 0.0, aggr: 1.0, reform: 0.0, agreement: 1.0, great_works: vec![], held: vec![], home_land: -1, known: vec![], overlord: NONE,
+                vassal_limit: 0.0, domain_limit: 0.0, over_vassals: 0.0, domain_penalty: 0.0, last_stand: false, security: 0.0,
+                realm_tier: 0, fear_until: 0, corrupt_seats: vec![], done: vec![], great: vec![], tax_relief: 0, regent: NONE, taken: 0, lost: 0,
                 civil_wars: 0, physician: false, parent: NONE, founded_year: 0, ended: None, battle_mult: 1.0, warships: 4.0,
                 ship_tier: 0, allies: vec![], factions: vec![], faction_since: vec![], ultimatum_cooldown: vec![], council: [NONE; 6],
                 council_for: NONE, econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0,
@@ -520,6 +532,10 @@ impl State {
             k.name = ["the {} Tribe", "the Kin of {}", "the {} Clans", "the {} Warband"][f].replace("{}", &place);
             k.short = format!("{} of {}", PEOPLES[f], place);
             k.place = place;
+            let lm = self.towns[cap].landmass;
+            let k = &mut self.realms[pid];
+            k.home_land = lm;
+            k.known = vec![lm];
             let adult = ADULT[f] as i64;
             let age = adult + self.rng.integers(5, (adult).max(6));
             let ruler = self.make_character(pid, -age, None, NONE, NONE, NONE);

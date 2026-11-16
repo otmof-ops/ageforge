@@ -92,6 +92,7 @@ impl State {
             if h != NONE { self.houses[h].prestige += 1.0; }
         }
         self.councils();
+        self.council_effects();
     }
 
     /// A power gene carried unseen wakes (lineage.awaken).
@@ -308,6 +309,7 @@ impl State {
     }
 
     pub fn claim_of(&mut self, c: usize) -> f64 { self.claim_score(c) }
+    pub fn civil_war_of(&mut self, k: usize, a: usize, b: usize) -> usize { self.civil_war(k, a, b) }
     pub fn pool_of(&self, k: usize) -> Vec<usize> { self.pool(k) }
 
     fn claim_score(&mut self, c: usize) -> f64 {

@@ -140,7 +140,7 @@ impl State {
     }
 
     /// Taxes in, field armies fed, levy and garrisons, regiments kept, disbanded and raised (civics.armies_year).
-    fn armies_year(&mut self) {
+    fn treasury_year(&mut self) {
         for k in 0..self.realms.len() {
             if !self.active(k) { continue; }
             let cu = &self.cultures[self.realms[k].people];
@@ -449,7 +449,7 @@ impl State {
         self.research_year();
         self.trends_year();
         self.laws_year();
-        self.armies_year();
+        self.treasury_year();
         self.decisions_year();
         self.reform_year();
         self.culture_events();
