@@ -5,7 +5,7 @@ import numpy as np
 
 from . import (beasts, bending, crafts, dungeons, dynasty, ecology, geography, governance, heroes, legends, monsters,
                titles, youth, civics, resources, statecraft, court, opinion, heart, economy, populace,
-               warfare, events, godmode, markets, stewardship, arcana, bounties,
+               warfare, events, godmode, markets, stewardship, arcana, bounties, guild,
                seafaring,
                shinobi, society)
 from .characters import Item, SINGULAR
@@ -64,10 +64,28 @@ class Settlement:
 class Monster:
     def __init__(self, kind, name, pos, power, year):
         self.kind, self.name, self.pos = kind, name, pos
-        self.power = self.base = float(power)
-        self.hoard, self.born, self.alive = 0.0, year, True
+        self.alive = True
+        self.base = float(power)
+        self.power = float(power)
+        self.hoard, self.born = 0.0, year
         self.sleep_until, self.last_said = 0, -999
         self.mid, self.items = None, []
+
+    @property
+    def power(self):
+        d = self.__dict__
+        return d["_power"] if "_power" in d else d.get("power", 0.0)
+
+    @power.setter
+    def power(self, value):
+        """Every blow lands here. A dragon about to die takes wing if it can (see dragons.flight)."""
+        d = self.__dict__
+        old = d["_power"] if "_power" in d else d.get("power")
+        if old is not None and self.kind == "dragon" and value < old and d.get("alive", True):
+            from .dragons import flight
+            value = flight(self, old, value)
+        d["_power"] = value
+        d.pop("power", None)
 
 
 class Ruin:
@@ -687,6 +705,9 @@ class Realm:
                 power = rng.uniform(*prange)
                 if kind == "demon" and rng.random() < 0.5:              # the veil holds more often than not
                     continue
+                if kind == "dragon" and any(o.alive and o.kind == "dragon" and dist(o.pos, (r, c)) < 45
+                                            for o in self.monsters):
+                    continue                                            # every dragon needs a great range to hunt
                 self.new_monster(kind, (int(r), int(c)), power)
                 n += 1
         # calamities: at most one per settled continent; a world calamity is rare and twice as strong
@@ -760,8 +781,6 @@ class Realm:
             _, _, rng_max, chance, loss, _, _, _ = MONSTER[m.kind]
             if m.power < m.base:
                 m.power += 0.05 * (m.base - m.power)
-            if m.kind == "dragon":
-                m.base += 10
             if m.kind == "troll" and self.year - m.born > 80 and rng.random() < 0.05:
                 m.alive = False
                 continue
@@ -770,7 +789,13 @@ class Realm:
                 from .dragons import spares, wrath_on
                 angry = [s for s in self.alive_towns() if s.landmass == m.landmass and dist(s.pos, m.pos) <= rng_max
                          and wrath_on(m, s, self.year)]
-            if self.year < m.sleep_until or rng.random() > chance * (2 if angry else 1):
+            mult = 2 if angry else 1
+            if m.kind == "dragon":
+                from .dragons import RAID_MULT, hidden
+                if hidden(m, self.year):
+                    continue                                            # wyrmlings stay in the peaks
+                mult *= RAID_MULT.get(getattr(m, "temper", "territorial"), 1.0) * (2 if getattr(m, "hungry", 0) else 1)
+            if self.year < m.sleep_until or rng.random() > chance * mult:
                 continue
             near = angry or [s for s in self.alive_towns() if s.landmass == m.landmass
                              and dist(s.pos, m.pos) <= rng_max and not (m.kind == "dragon" and spares(m, s))]
@@ -789,6 +814,13 @@ class Realm:
         rm, rd = m.power * rng.uniform(0.5, 1.5), d * rng.uniform(0.5, 1.5)
         s.raided_by = m
         self.win["raids"] += 1
+        if m.kind == "dragon" and getattr(m, "temper", None) == "reclusive" and not getattr(m, "wrath", {}).get(s.faction):
+            s.granary = getattr(s, "granary", 0.0) * 0.7                   # a reclusive dragon comes for the herds
+            s.pop *= 1 - 0.01 * rng.random()
+            m.hungry = 0
+            if rng.random() < 0.15:
+                self.say(f"{m.name} takes the cattle of {s.name} and is gone before the bells stop.", minor=True)
+            return
         if rm > rd:
             s.raided = "lost"
             s.granary = getattr(s, "granary", 0.0) * 0.5
@@ -948,6 +980,7 @@ class Realm:
         self.spawn_monsters()
         self.raids()
         bounties.bounties_year(self)
+        guild.guild_year(self)
         heroes.heroes_resolve(self, won)
         self.cleanup()
         heroes.spawn_heroes(self)

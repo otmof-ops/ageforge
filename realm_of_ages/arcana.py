@@ -105,7 +105,6 @@ def arcana_year(realm):
     arts_year(realm)
     beyond_year(realm)
     wild_magic(realm)
-    seals_year(realm)
 
 
 # ---------------------------------------------------------------- monsters on the land
@@ -125,7 +124,11 @@ def threat_year(realm):
             continue
         d = np.hypot(tp[sel, 0] - m.pos[0], tp[sel, 1] - m.pos[1])
         reach = 40 if m.kind == "calamity" else 15
-        threat[sel] += (m.power / 4000) * np.exp(-d / reach)
+        w = min(m.power, 4000) / 4000
+        if m.kind == "dragon":
+            from .dragons import RAID_MULT, hidden
+            w *= 0 if hidden(m, realm.year) else RAID_MULT.get(getattr(m, "temper", "territorial"), 1.0) * 0.6
+        threat[sel] += w * np.exp(-d / reach)
     for t, v in zip(towns, threat):
         t.threat = float(min(3.0, v))
     # a calamity on a continent: its markets collapse while it lives

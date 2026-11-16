@@ -176,6 +176,8 @@ def nearest_monster(realm, pos, reach=25):
     for m in realm.monsters:
         if not m.alive or getattr(m, "sea", False) or (m.landmass != lid and not getattr(m, "world", False)):
             continue
+        if m.kind == "dragon":
+            continue                                                    # no one hunts a dragon alone
         lim = 45 if m.kind == "calamity" else reach
         d = math.hypot(m.pos[0] - pos[0], m.pos[1] - pos[1])
         if d <= lim and (bd is None or (m.kind == "calamity") > (best.kind == "calamity") or

@@ -25,7 +25,7 @@ def monster_year(realm):
         if not m.alive or m.kind == "calamity":
             continue
         age = y - m.born
-        if m.base < m.adult_base:                                    # the young grow into their strength
+        if m.kind != "dragon" and m.base < m.adult_base:             # the young grow into their strength (dragons: dragons.py)
             grow = 0.05 * (m.adult_base - m.base)
             m.base += grow
             m.power += grow
@@ -90,11 +90,16 @@ def breed_dragon(realm, m, age):
         pos = clip(realm, (m.pos[0] + rng.integers(-5, 6), m.pos[1] + rng.integers(-5, 6)))
         adult = sum(p.adult_base for p in parents) / len(parents) * rng.uniform(0.85, 1.25)
         name = f"{realm.name(DRAGON_SYL)} {rng.choice(DRAGON_EPITHET)}"
+        if any(o.alive and o.kind == "dragon" and o is not m and o.mid not in m.children
+               and mdist(o.pos, pos) < 30 for o in realm.monsters if mate is None or o is not mate):
+            continue                                                    # no range for another; the hatchling starves
         young = realm.new_monster("dragon", pos, adult * 0.25, name=name, parents=parents, quiet=True)
         young.adult_base = adult * (1.3 if "elder" in young.traits else 1.0)
         for p in parents:
             p.children.append(young.mid)
         names.append(young.name)
+    if not names:
+        return
     who = f"{m.name} and {mate.name}" if mate else m.name
     realm.say(f"A clutch hatches in the lair of {who}: {', '.join(names)}.")
 

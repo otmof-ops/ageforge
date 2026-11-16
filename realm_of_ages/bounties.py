@@ -17,8 +17,7 @@ def dist(a, b):
 def bounties_year(realm):
     post_monsters(realm)
     post_criminals(realm)
-    answer_monsters(realm)
-    answer_criminals(realm)
+    # the purses are answered on the Wardens' Hall quest board (guild.py)
 
 
 # ---------------------------------------------------------------- posting
