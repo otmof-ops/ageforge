@@ -46,7 +46,8 @@ def moods_year(realm):
             p = (12 - 120 * getattr(t, "famine", 0) - 60 * getattr(t, "sick_now", 0) - 60 * (tax - 0.25)
                  - 20 * (getattr(t, "occupied_by", None) is not None) - 6 * at_war - r.tyranny / 3
                  - (0 if faith_ok else 10) + (5 if lord is not None and (lord.legitimacy or 0) >= 60 else 0)
-                 + (15 if relief else 0) + getattr(t, "econ_mood", 0.0))
+                 + (15 if relief else 0) + getattr(t, "econ_mood", 0.0)
+                 - (12 if t.culture != k.people else 0))                # ruled by another people
             b = 10 + 3 * min(10.0, getattr(t, "trade", 0.0)) - 40 * getattr(t, "crime", 0.1) - 40 * (tax - 0.25) \
                 - (15 if getattr(k, "laws", {}).get("trade") == "protectionist" else 0)
             t.mood["peasants"] += 0.3 * (p - t.mood["peasants"])

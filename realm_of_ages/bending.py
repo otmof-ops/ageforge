@@ -282,7 +282,8 @@ def concord_year(realm):
                 if c.hp <= 0:
                     realm.kill(c, f"fell confronting the tyrant {r.name} {r.regnal}")
             return
-    if int(realm.war.sum() // 2) >= 3 and rng.random() < 0.3:
+    if int(realm.war.sum() // 2) >= 3 and rng.random() < 0.3 and y - getattr(c, "last_peace", -99) >= 15:
+        c.last_peace = y
         pairs = [(i, j) for i in range(realm.npol) for j in range(i + 1, realm.npol) if realm.war[i, j]]
         i, j = pairs[int(rng.integers(len(pairs)))]
         realm.war[i, j] = realm.war[j, i] = False

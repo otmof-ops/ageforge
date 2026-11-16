@@ -199,12 +199,22 @@ def end_war(realm, key, w, outcome):
             what = "forces its terms"
         elif "duchy" in goal and goal["duchy"] in realm.duchies:
             towns = [t for t in realm.alive_towns(b) if getattr(t, "duchy", None) == goal["duchy"]]
-            from .governance import lose_lordship
-            for t in towns:
-                lose_lordship(realm, t)
-                t.faction, t.capital = a, False
-                realm.town_moved(t)
-            what = f"takes {realm.duchies[goal['duchy']]['name']} ({len(towns)} towns)"
+            if towns:
+                from .governance import lose_lordship
+                for t in towns:
+                    lose_lordship(realm, t)
+                    t.faction, t.capital = a, False
+                    realm.town_moved(t)
+                what = f"takes {realm.duchies[goal['duchy']]['name']} ({len(towns)} towns)"
+            else:                                                       # another got there first: tribute instead
+                pay = indemnity(realm, kb)
+                kb.gold -= pay
+                ka.gold += pay
+                from .events import book
+                book(realm, b, "indemnity out", -pay, f"pays {ka.name} for a lost war")
+                book(realm, a, "indemnity in", pay, f"paid by {kb.name}")
+                what = (f"finds {realm.duchies[goal['duchy']]['name']} already lost to another, and takes "
+                        f"{pay:,.0f} gold in tribute instead")
         elif goal.get("subjugate"):
             kb.overlord = a
             what = f"makes {kb.name} its tributary"
@@ -240,7 +250,7 @@ def end_war(realm, key, w, outcome):
     elif outcome == "defender":
         if ra is not None:
             ra.legitimacy = max(0.0, (ra.legitimacy or 50) - 10)
-        pay = max(0.0, ka.gold * 0.5)
+        pay = indemnity(realm, ka)
         ka.gold -= pay
         kb.gold += pay
         from .events import book
@@ -317,6 +327,37 @@ def contact(realm, k, o):
     return naval_contact(realm, k.id, o.id)
 
 
+def indemnity(realm, k):
+    """What a beaten realm pays: half its treasury, or a year and a half of its revenue if that is more, borrowed if
+    need be."""
+    revenue = getattr(k, "income", 0.0) * getattr(k, "tax_now", 0.3) * getattr(k, "collect", 1.0)
+    return max(0.0, 0.5 * k.gold, 1.5 * revenue)
+
+
+def last_stands(realm):
+    """A people near its end fights like one: when a people holds a small part of what it once held, its last realms
+    fight on home ground with everything they have."""
+    held = {}
+    for t in realm.alive_towns():
+        held[t.culture] = held.get(t.culture, 0) + 1
+    peak = getattr(realm, "people_peak", None)
+    if peak is None:
+        peak = realm.people_peak = {}
+    for p, n in held.items():
+        peak[p] = max(peak.get(p, 0), n)
+    for k in realm.kingdoms:
+        if realm.extinct[k.id]:
+            continue
+        n, top = held.get(k.people, 0), peak.get(k.people, 0)
+        stand = top >= 10 and n <= max(8, 0.2 * top)
+        if stand and not getattr(k, "last_stand", False):
+            realm.say(f"**A last stand.** The {realm.pname(k.id)} hold only {n} towns of the {top} their people once "
+                      f"held; in {k.name} every hand takes up a spear.")
+        k.last_stand = stand
+        if stand:
+            k.battle_mult = getattr(k, "battle_mult", 1.0) * 1.6
+
+
 def start_war(realm, a, b, cb):
     realm.war[a, b] = realm.war[b, a] = True
     realm.war_since[a, b] = realm.war_since[b, a] = realm.year
@@ -326,7 +367,16 @@ def start_war(realm, a, b, cb):
     r = realm.chars[ka.ruler]
     from .heart import add_stress, reluctance
     add_stress(realm, r, reluctance(r, "war"), "going to war")
-    realm.say(f"**War.** {realm.who(r)} of {ka.name} declares war on {kb.name}{txt}.")
+    pile = getattr(realm, "recent_decl", None)
+    if pile is None:
+        pile = realm.recent_decl = {}
+    key = (b, txt)
+    joined = realm.year - pile.get(key, -99) <= 15
+    pile[key] = realm.year
+    if joined:
+        realm.say(f"{realm.who(r)} of {ka.name} joins the fight against {kb.name}{txt}.", minor=True)
+    else:
+        realm.say(f"**War.** {realm.who(r)} of {ka.name} declares war on {kb.name}{txt}.")
     from .warfare import raise_for_war
     raise_for_war(realm, a, b)
     # tributaries answer their overlord's call to arms
@@ -433,6 +483,11 @@ def great_decisions(realm):
 
 
 def statecraft_year(realm):
+    last_stands(realm)
+    _statecraft_year(realm)
+
+
+def _statecraft_year(realm):
     limits_year(realm)
     rivals_year(realm)
     tributaries_year(realm)

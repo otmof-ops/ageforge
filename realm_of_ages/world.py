@@ -684,7 +684,10 @@ class Realm:
                     continue
                 w = self.mana[cells[:, 0], cells[:, 1]] + 0.05
                 r, c = cells[rng.choice(len(cells), p=w / w.sum())]
-                self.new_monster(kind, (int(r), int(c)), rng.uniform(*prange))
+                power = rng.uniform(*prange)
+                if kind == "demon" and rng.random() < 0.5:              # the veil holds more often than not
+                    continue
+                self.new_monster(kind, (int(r), int(c)), power)
                 n += 1
         # calamities: at most one per settled continent; a world calamity is rare and twice as strong
         settled = {s.landmass for s in self.alive_towns()}
@@ -711,6 +714,8 @@ class Realm:
             name = f"{self.name(DRAGON_SYL)} {rng.choice(DRAGON_EPITHET)}"
             self.say(f"**A dragon.** {name} comes down out of the peaks and makes a lair near {near}.")
         elif kind == "demon":
+            top = max(5, getattr(self, "world_tier", 0) + 2)             # no more than two tiers past the best mortal
+            power = min(power, (top - 4) * 600 + 599)
             name = f"{self.name(DEMON_SYL)}, a demon of the {TIER_WORDS[int(min(10, 4 + power // 600))]} tier"
             self.say(f"A ley-nexus tears near {near} and {name} steps through.")
         elif kind == "wraith":
