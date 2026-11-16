@@ -1,0 +1,4 @@
+#!/bin/sh
+# Ageforge: open the Realm of Ages game.
+here="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$here" && exec python3 -m realm_of_ages.tui "$@"

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+# saved worlds and run outputs
+worlds/
+realm_run/
+ages-*/
+*.pkl
+*.pkl.tmp
