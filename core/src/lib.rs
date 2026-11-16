@@ -7,7 +7,11 @@
 use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, IntoPyArray};
 use pyo3::prelude::*;
 
+mod geography;
+mod grid;
 mod rng;
+mod tables;
+mod world;
 
 /// Which town's territory each map cell falls in: every town casts influence over a disc whose radius grows with
 /// its population, stronger near the town and for a seat; the strongest influence takes the cell (the earlier town
@@ -59,5 +63,6 @@ fn territory<'py>(
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(territory, m)?)?;
     m.add_function(wrap_pyfunction!(rng::pcg64_doubles, m)?)?;
+    m.add_class::<world::World>()?;
     Ok(())
 }
