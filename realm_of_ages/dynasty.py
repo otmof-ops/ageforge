@@ -353,9 +353,9 @@ def dynasty_year(realm):
         if a > c.life * 1.3:
             realm.kill(c, "died of old age")
         elif rng.random() < mortality(realm, c, a):
-            frac = a * 75 / max(1.0, c.life)
-            realm.kill(c, "died in infancy" if frac < 1 else "died in childhood" if frac < 15 else
-                       "died of illness" if frac < 55 else "died of old age")
+            frac = a / max(1.0, c.life)
+            realm.kill(c, "died in infancy" if a < 1 else "died in childhood" if not c.adult(y) else
+                       "died of illness" if frac < 0.75 else "died of old age")
     births(realm)
     for k in realm.kingdoms:
         f = k.id

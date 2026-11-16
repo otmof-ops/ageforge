@@ -155,7 +155,7 @@ def heist(realm, c):
     src.remove(it)
     from .heroes import give_item
     give_item(realm, c, it, quiet=True)
-    c.bounty += 300 + it.bonus * 1000
+    c.bounty += 10 + it.bonus * 40
     from .crafts import gain_fame
     gain_fame(realm, c, "Security", 60 + 100 * it.bonus)
     realm.say(f"**A heist.** {realm.who(c)} lifts {it.label()} from the {where}. "
@@ -184,7 +184,8 @@ def contract(realm, c):
     use(realm, c, "Sneak", 2.0)
     use(realm, c, "Blade", 1.0)
     if rng.random() < attack / (attack + defence + 60):
-        fee = 500 if tgt.id != tk.ruler else 2000
+        rev = getattr(tk, "income", 0.0) * getattr(tk, "tax_now", 0.3)
+        fee = max(5.0, (0.3 if tgt.id != tk.ruler else 1.0) * rev)       # a ruler's life costs a year of a realm's taxes
         c.gold += fee
         c.bounty += fee
         from .crafts import gain_fame
