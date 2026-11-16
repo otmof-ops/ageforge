@@ -87,16 +87,16 @@ def gain_legacy(realm, c, kind, renown):
     if after > before and after >= 2:
         realm.say(f"The songs of {realm.who(c)} spread; theirs is now a legacy of {LEGACY[kind][0]} "
                   f"{ROMAN[after]}.", minor=after < 5)
-    c.invalidate()
+    if after != before:
+        c.invalidate()                                                   # cached figures follow legacy levels only
     if c.house is not None:
         h = realm.houses[c.house]
         hb = level_of(h.legacy, HOUSE_LEGACY_LEVELS)
         h.legacy += pts * (0.5 if h.track == kind else 0.2)
         ha = level_of(h.legacy, HOUSE_LEGACY_LEVELS)
         if ha > hb:
-            for i in realm.living:
-                if realm.chars[i].house == h.id:
-                    realm.chars[i].invalidate()
+            for i in realm.house_ids(h.id):
+                realm.chars[i].invalidate()
             realm.say(f"{h.name}'s legacy of {LEGACY[h.track][0]} reaches its {ROMAN[ha]} rank; every child of the "
                       f"house is born to it.", minor=ha < 3)
 
