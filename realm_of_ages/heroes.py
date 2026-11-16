@@ -268,6 +268,13 @@ def heroes_act(realm):
         s.guard, s.raided, s.raided_by = 0.0, None, None
     for h in list(realm.heroes()):
         home = hero_home(realm, h)
+        if home is None:                                                # their realm has fallen: to their own people
+            kin = [k for k in realm.kingdoms if not realm.extinct[k.id] and k.people == h.people
+                   and realm.alive_towns(k.id)]
+            if kin:
+                h.realm = max(kin, key=lambda k: len(realm.alive_towns(k.id))).id
+                h.home = None
+                home = hero_home(realm, h)
         if home is None:
             realm.kill(h, f"faded from the world with the fall of {realm.kingdoms[h.realm].name}")
             continue

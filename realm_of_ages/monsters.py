@@ -39,6 +39,8 @@ def monster_year(realm):
         elif m.kind == "demon" and rng.random() < 0.0004:
             demon_child(realm, m)
     crown_sovereign(realm)
+    from .dragons import dragons_year
+    dragons_year(realm)
 
 
 def new_lineage_fields(m, rng, parents=()):
@@ -179,6 +181,9 @@ def on_monster_slain(realm, m, slayer=None):
         people = min(near, key=lambda t: mdist(t.pos, m.pos)).faction if near else None
     from .arcana import on_slain
     on_slain(realm, m, slayer, people)
+    if m.kind == "dragon":
+        from .dragons import freed
+        freed(realm, m)
     if people is not None and m.kind in SOULSTONE:
         realm.kingdoms[people].soulstones[SOULSTONE[m.kind]] += 1
         if m.kind == "dragon":

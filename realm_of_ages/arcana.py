@@ -144,6 +144,7 @@ def threat_year(realm):
 def raid_shock(realm, m, s):
     """A town falls to a monster: refugees, ruined stores, gold carried off, and trade frightened away."""
     k = realm.kingdoms[s.faction]
+    s.raided_year = realm.year
     near = sorted((t for t in realm.alive_towns(s.faction) if t is not s and t.landmass == s.landmass),
                   key=lambda t: (t.pos[0] - s.pos[0]) ** 2 + (t.pos[1] - s.pos[1]) ** 2)[:3]
     fled = s.pop * 0.15
@@ -165,6 +166,8 @@ def raid_shock(realm, m, s):
 def on_slain(realm, m, slayer, people):
     """Monster stuff for the scribes, the bounty for the slayer, and the hoard back into the world."""
     from .events import book, private
+    from .bounties import pay_out
+    pay_out(realm, m, slayer)
     if people is None:
         return
     k = realm.kingdoms[people]
