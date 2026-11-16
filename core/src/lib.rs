@@ -9,10 +9,13 @@ use pyo3::prelude::*;
 
 mod climate;
 mod economy;
+mod dynasty;
 mod geography;
 mod grid;
+mod opinion;
 mod people;
 mod populace;
+mod power;
 mod state;
 mod stewardship;
 mod rng;

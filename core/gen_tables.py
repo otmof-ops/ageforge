@@ -141,6 +141,17 @@ strs("BORROWED", sorted(_ch.BORROWED)); strs("GIFTS", list(_ar.GIFTS)); nums("GI
 out.append("pub const COLORS: [[u8; 3]; 4] = [%s];" % ", ".join("[%d, %d, %d]" % c for c in data.COLORS))
 strs("SUCCESSION", data.SUCCESSION)
 
+# ---- power: legacy effects, weapon and school skills, perks
+out.append("pub const LEGACY_FX: [&[(&str, f64)]; %d] = [%s];" % (len(data.LEGACY), ", ".join(
+    "&[" + ", ".join(f"({rs_str(k)}, {f(v)})" for k, v in fx.items()) + "]" for _, (_, fx) in data.LEGACY.items())))
+out.append("pub const WEAPON_SKILL: [usize; %d] = [%s];" % (len(classes), ", ".join(
+    str(skills.index(data2.WEAPON_SKILL.get(c, "Blade"))) for c in classes)))
+out.append("pub const SCHOOL_SKILL: [usize; 6] = [%s];" % ", ".join(str(skills.index(s)) for s in data2.SCHOOL_SKILL))
+out.append("pub const PERKS: [[&str; 5]; %d] = [%s];" % (len(skills), ", ".join(
+    "[" + ", ".join(rs_str(p) for p in data2.PERKS[s]) + "]" for s in skills)))
+nums("PERK_AT", data2.PERK_AT)
+out.append("pub const POWER_GENES: [(&str, &str); %d] = [%s];" % (len(data.POWER_GENES), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data.POWER_GENES.items())))
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")
 print(f"wrote src/tables.rs ({len(out)} lines)")

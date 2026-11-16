@@ -13,15 +13,6 @@ fn cap(s: &str) -> String {
 }
 
 impl State {
-    /// A person dies (world.kill, the part every system needs; heirs, legends and the heart join with slice 3).
-    pub fn kill(&mut self, cid: usize, cause: String) {
-        let c = &mut self.chars[cid];
-        if !c.alive { return; }
-        c.alive = false;
-        c.died = Some(self.year);
-        c.cause = Some(cause);
-    }
-
     pub fn moods_year(&mut self) {
         let y = self.year;
         for k in 0..self.realms.len() {

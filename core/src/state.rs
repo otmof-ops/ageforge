@@ -261,7 +261,8 @@ impl State {
             genetic, latent, personality, attrs, prowess, talent, life, classes: vec![(cls, 1)], level: 1, xp: 0.0,
             hp: 100.0, renown: 0.0, branch: vec![], capstones: vec![], attributes, skills, legacy, legitimacy: None,
             tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, undead: false, built: 0,
-            disgraced_until: 0, titles: vec![], memories: vec![], alive: true, died: None, cause: None, home: NONE,
+            disgraced_until: 0, titles: vec![], memories: vec![], deeds: vec![], perks: vec![], skill_progress: [0.0; 8],
+            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, relations: vec![], rival_ruler: NONE, hooks: vec![], alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -299,11 +300,30 @@ impl State {
                 self.spend_point(cid);
             }
             if self.chars[cid].level == 40 || self.chars[cid].level == 70 {
-                // prestige classes come with slice 3 (they need tiers); until then a new base class
-                let have: Vec<usize> = self.chars[cid].classes.iter().map(|x| x.0).collect();
-                let (p, t) = (self.chars[cid].people, self.chars[cid].talent);
-                let cls = pick_class(&mut self.rng, p, t, &have);
-                self.chars[cid].classes.push((cls, 0));
+                let opts = self.prestige_options(&self.chars[cid]);
+                if !opts.is_empty() {
+                    let new = opts[self.rng.integers(0, opts.len() as i64) as usize];
+                    self.chars[cid].classes.push((new, 0));
+                    let name = CLASSES[new].name;
+                    let a = if "AEIOU".contains(&name[..1]) { "an" } else { "a" };
+                    let text = format!("{} reaches level {} and becomes {a} {name}.", self.who(cid), self.chars[cid].level);
+                    self.say(text, false);
+                    if name == "Lich" {
+                        self.chars[cid].undead = true;
+                        let text = format!("**{} casts off the flesh.** A Lich now walks among the {}, and does not age.",
+                                           self.who(cid), PEOPLES[self.chars[cid].people]);
+                        self.say(text, false);
+                    }
+                } else {
+                    let have: Vec<usize> = self.chars[cid].classes.iter().map(|x| x.0).collect();
+                    let (p, t) = (self.chars[cid].people, self.chars[cid].talent);
+                    let cls = pick_class(&mut self.rng, p, t, &have);
+                    self.chars[cid].classes.push((cls, 0));
+                }
+            }
+            if self.chars[cid].level == LEVEL_CAP_T[1] as u32 {
+                let text = format!("**{} reaches the hundred-and-thirtieth level.** The dragon blood has carried them past the summit of mortals.", self.who(cid));
+                self.say(text, false);
             }
         }
     }
@@ -355,6 +375,14 @@ impl State {
 
     /// dynasty.crown for a realm's first ruler; successions come with slice 4.
     pub fn crown(&mut self, k: usize, cid: usize, reason: &str) {
+        let new_dyn = self.chars[cid].house == NONE || self.chars[cid].house != self.realms[k].house;
+        let old = self.realms[k].ruler;
+        let old_house = if old != NONE { self.chars[old].house } else if !self.realms[k].reigns.is_empty() { self.chars[self.realms[k].reigns.last().unwrap().id].house } else { NONE };
+        if new_dyn && old_house != NONE && !self.realms[k].reigns.is_empty() {
+            let kin: Vec<usize> = self.chars.iter().filter(|m| m.alive && m.house == old_house && m.id != cid).map(|m| m.id).collect();
+            for m in kin { self.remember(m, cid, "took my family's throne", -50.0, 0.5); }
+        }
+        let lead = if new_dyn && !self.realms[k].reigns.is_empty() { "**A new dynasty.** " } else { "" };
         if self.chars[cid].house == NONE {
             let n = self.chars[cid].name.clone();
             self.new_house(cid, Some(n));
@@ -367,7 +395,10 @@ impl State {
             Some(x) => { x.1 += 1; x.1 }
             None => { realm.regnal.push((name.clone(), 1)); 1 }
         };
-        realm.reigns.push((cid, self.year, None));
+        realm.reigns.push(Reign { id: cid, start: self.year, end: None, how: None, epithet: None, legit: None, tyranny: 0.0 });
+        realm.taken = 0;
+        realm.lost = 0;
+        if reason.contains("seizing") { self.chars[cid].tyranny = (self.chars[cid].tyranny + 30.0).min(100.0); }
         let c = &mut self.chars[cid];
         c.regnal = Some(roman(n));
         c.ruled = Some((k, self.year, None));
@@ -375,13 +406,19 @@ impl State {
         let h = c.house;
         self.houses[h].rulers += 1;
         // legitimacy at the crowning (governance.on_crown)
-        let base = match reason { "the first of the line" => 75.0, "by right of birth" => 70.0, "as eldest" => 68.0, _ => 50.0 };
+        const CROWN_BASE: [(&str, f64); 12] = [("by right of birth", 70.0), ("as eldest", 68.0), ("chosen by the great of the realm", 62.0),
+            ("by strength of arm", 55.0), ("the first of the line", 75.0), ("raised up when the line failed", 45.0),
+            ("after a war for the throne", 40.0), ("seizing the throne from the cradle", 12.0), ("a nobody raised up", 30.0),
+            ("overthrowing", 35.0), ("leading the war of independence", 52.0), ("restored when the dark was cast down", 70.0)];
+        let base = CROWN_BASE.iter().find(|(k, _)| reason.starts_with(k) || reason.contains(k)).map(|x| x.1).unwrap_or(50.0);
+        let ruler_kind = LEGACY_KINDS.iter().position(|x| *x == "ruler").unwrap();
+        let base = base + self.legacy_level(&self.chars[cid], ruler_kind) as f64 * 5.0;
         let renown = self.chars[cid].renown;
         let leg = base + (renown / 60.0).min(15.0) + self.houses[h].prestige / 200.0;
         self.chars[cid].legitimacy = Some(leg.clamp(0.0, 100.0));
         let c = &self.chars[cid];
         let title = if c.female { RULER_TITLE_F[c.people] } else { RULER_TITLE_M[c.people] };
-        let text = format!("{} {} of {} is crowned {} of {}, {} (legitimacy {:.0}).", c.name, c.regnal.as_ref().unwrap(),
+        let text = format!("{lead}{} {} of {} is crowned {} of {}, {} (legitimacy {:.0}).", c.name, c.regnal.as_ref().unwrap(),
                            self.houses[h].name, title, self.realms[k].name, reason, c.legitimacy.unwrap());
         self.say(text, false);
     }
@@ -457,7 +494,8 @@ impl State {
             self.realms.push(Realm { id: pid, people: f, name: String::new(), short: String::new(), rank: "tribe",
                 gov: "tribal", law: if f == 3 { "strongest" } else { "elective" }, color, ruler: NONE, house: NONE,
                 regnal: vec![], reigns: vec![], place: String::new(), extinct: false,
-                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0, council: [NONE; 6],
+                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0, regent: NONE, taken: 0, lost: 0,
+                civil_wars: 0, physician: false, council: [NONE; 6],
                 council_for: NONE, econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0,
                 income: 0.0, real_gdp: 0.0, credit: None, defaults: 0, rate: 0.0, money: 0.0, trade_val: 0.0,
                 trade_net: 0.0, partners: 0, trade_protectionist: false, last_forced: -99, last_default: -99,

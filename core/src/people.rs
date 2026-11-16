@@ -47,6 +47,18 @@ pub struct Character {
     pub disgraced_until: i64,
     pub titles: Vec<String>,
     pub memories: Vec<(usize, &'static str, f64, f64, i64)>, // (about whom, why, value, decay, year), for opinion
+    pub deeds: Vec<(&'static str, f64)>,
+    pub perks: Vec<(usize, usize)>,        // (skill, perk index)
+    pub skill_progress: [f64; 8],
+    pub battle_arts: u32,
+    pub lost_art: bool,
+    pub custom: bool,
+    pub concord: bool,
+    pub health: f64,
+    pub epithet: Option<String>,
+    pub relations: Vec<(usize, bool)>,     // (whom, friend: true / rival: false)
+    pub rival_ruler: usize,
+    pub hooks: Vec<(usize, &'static str)>,
     pub alive: bool,
     pub died: Option<i64>,
     pub cause: Option<String>,
@@ -55,6 +67,13 @@ pub struct Character {
 }
 
 impl Character {
+    pub fn deed(&self, kind: &str) -> f64 {
+        self.deeds.iter().find(|d| d.0 == kind).map(|d| d.1).unwrap_or(0.0)
+    }
+    pub fn has_trait(&self, name: &str) -> bool {
+        self.personality.iter().any(|&p| PERSONALITY[p] == name)
+    }
+
     pub fn age(&self, year: i64) -> i64 { year - self.born }
     pub fn adult(&self, year: i64) -> bool { self.age(year) >= ADULT[self.people] as i64 }
 
@@ -172,7 +191,7 @@ pub struct Realm {
     pub ruler: usize,
     pub house: usize,
     pub regnal: Vec<(String, u32)>,
-    pub reigns: Vec<(usize, i64, Option<i64>)>,
+    pub reigns: Vec<Reign>,
     pub place: String,
     pub extinct: bool,
     pub growth_mult: f64,
@@ -180,6 +199,11 @@ pub struct Realm {
     pub gold: f64,
     pub crown_law: u32,
     pub tax_relief: i64,
+    pub regent: usize,
+    pub taken: u32,
+    pub lost: u32,
+    pub civil_wars: u32,
+    pub physician: bool,
     pub council: [usize; 6],          // marshal steward spymaster mage loremaster admiral
     pub council_for: usize,
     pub econ_distress: f64,
@@ -208,6 +232,16 @@ pub struct Realm {
 pub struct Culture {
     pub people: usize,
     pub innovations: std::collections::HashSet<&'static str>,
+}
+
+pub struct Reign {
+    pub id: usize,
+    pub start: i64,
+    pub end: Option<i64>,
+    pub how: Option<String>,
+    pub epithet: Option<String>,
+    pub legit: Option<f64>,
+    pub tyranny: f64,
 }
 
 pub struct Ruin {

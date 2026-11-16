@@ -125,6 +125,9 @@ impl World {
         d.set_item("level", c.level)?; d.set_item("xp", c.xp)?;
         d.set_item("regnal", c.regnal.clone())?; d.set_item("legitimacy", c.legitimacy)?;
         d.set_item("gift", c.gift.map(|g| GIFTS[g]))?; d.set_item("alive", c.alive)?;
+        d.set_item("cr", self.st.cr(c, false))?; d.set_item("tier", self.st.tier(c))?;
+        d.set_item("gate", self.st.power_gate(c, false))?; d.set_item("cause", c.cause.clone())?;
+        d.set_item("epithet", c.epithet.clone())?; d.set_item("renown", c.renown)?;
         let sk = PyDict::new(py);
         for (i, s) in SKILLS.iter().enumerate() { sk.set_item(*s, c.skills[i])?; }
         d.set_item("skills", sk)?;
@@ -140,7 +143,8 @@ impl World {
             self.st.realm_resources();
             self.st.land_year();
             self.st.expand();
-            self.st.councils();
+            self.st.dynasty_year();
+            self.st.opinion_year();
             self.st.treasury_year();
             self.st.trade_year();
             self.st.money_year();
@@ -166,6 +170,12 @@ impl World {
 
     fn harvest<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
         let c = &self.st.climate; arr(py, c.eh, c.ew, &c.harvest.v)
+    }
+
+    /// Every person, for the calibration table: (people, female, born, died or -1, cause, children, ruled).
+    fn people_rows(&self) -> Vec<(usize, bool, i64, i64, String, usize, bool)> {
+        self.st.chars.iter().map(|c| (c.people, c.female, c.born, c.died.unwrap_or(-1), c.cause.clone().unwrap_or_default(),
+                                      c.children.len(), c.ruled.is_some())).collect()
     }
 
     fn n_characters(&self) -> usize { self.st.chars.len() }
