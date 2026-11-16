@@ -1,0 +1,8 @@
+#!/bin/sh
+# Build the Rust core (core/) and install it into the package. The game runs without it, only slower.
+set -e
+here="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$here/core"
+cargo build --release
+cp target/release/lib_core.so "$here/realm_of_ages/_core.abi3.so"
+echo "Rust core installed: realm_of_ages/_core.abi3.so"

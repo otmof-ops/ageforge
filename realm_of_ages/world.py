@@ -49,6 +49,11 @@ def _kernel(rad):
 
 KERNELS = {r: _kernel(r) for r in range(0, 12)}
 
+try:                                                                     # the heavy work in Rust, when it is built
+    from . import _core                                                  # (core/, built by bin/build-core)
+except ImportError:
+    _core = None
+
 
 class Settlement:
     def __init__(self, sid, name, faction, pos, pop, year, capital=False):
@@ -457,6 +462,19 @@ class Realm:
 
     # ---------------- territory and economy
     def compute_territory(self):
+        if _core is not None:                                            # the Rust twin, identical cell for cell
+            alive = self.alive_towns()
+            terr = self.__dict__.get("_terr64")
+            if terr is None or terr.shape != self.terrain.shape:
+                terr = self._terr64 = self.terrain.astype(np.int64)
+            owner = _core.territory(terr, int(OCEAN), np.array([s.pos[0] for s in alive], np.int64),
+                                    np.array([s.pos[1] for s in alive], np.int64),
+                                    np.array([s.pop for s in alive], np.float64),
+                                    np.array([bool(s.capital) for s in alive]))
+            self.owner, self.cache = owner, alive
+            fac = np.array([s.faction for s in alive] + [-1])
+            self.owner_fac = fac[owner]
+            return
         H, W = self.H, self.W
         owner = np.full((H, W), -1, int)
         best = np.zeros((H, W))
