@@ -5,7 +5,7 @@ import numpy as np
 
 from . import (beasts, bending, crafts, dungeons, dynasty, ecology, geography, governance, heroes, legends, monsters,
                titles, youth, civics, resources, statecraft, court, opinion, heart, economy, populace,
-               warfare, events, godmode, markets, stewardship, arcana,
+               warfare, events, godmode, markets, stewardship, arcana, bounties,
                seafaring,
                shinobi, society)
 from .characters import Item, SINGULAR
@@ -765,9 +765,15 @@ class Realm:
             if m.kind == "troll" and self.year - m.born > 80 and rng.random() < 0.05:
                 m.alive = False
                 continue
-            if self.year < m.sleep_until or rng.random() > chance:
+            angry = []
+            if m.kind == "dragon":
+                from .dragons import spares, wrath_on
+                angry = [s for s in self.alive_towns() if s.landmass == m.landmass and dist(s.pos, m.pos) <= rng_max
+                         and wrath_on(m, s, self.year)]
+            if self.year < m.sleep_until or rng.random() > chance * (2 if angry else 1):
                 continue
-            near = [s for s in self.alive_towns() if s.landmass == m.landmass and dist(s.pos, m.pos) <= rng_max]
+            near = angry or [s for s in self.alive_towns() if s.landmass == m.landmass
+                             and dist(s.pos, m.pos) <= rng_max and not (m.kind == "dragon" and spares(m, s))]
             if not near:
                 continue
             w = np.array([s.wealth + 10 for s in near])
@@ -941,6 +947,7 @@ class Realm:
         won = self.battles(pairs, war_power)
         self.spawn_monsters()
         self.raids()
+        bounties.bounties_year(self)
         heroes.heroes_resolve(self, won)
         self.cleanup()
         heroes.spawn_heroes(self)

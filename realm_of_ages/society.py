@@ -173,8 +173,8 @@ def contract(realm, c):
         return
     client, target_people = wars[int(rng.integers(len(wars)))]
     tk = realm.kingdoms[target_people]
-    cands = [h for h in realm.heroes() if h.realm == target_people] + \
-            ([realm.chars[tk.ruler]] if tk.ruler is not None else [])
+    cands = [h for h in realm.heroes() if h.realm == target_people and h.alive] + \
+            ([realm.chars[tk.ruler]] if tk.ruler is not None and realm.chars[tk.ruler].alive else [])
     if not cands:
         return
     tgt = cands[int(rng.integers(len(cands)))]
