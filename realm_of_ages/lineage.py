@@ -1,4 +1,5 @@
 """What runs in the blood and what is told: power genetics (latent and awakened) and legacies."""
+from bisect import bisect_right
 from .data import (ATTRS, BLOODLINES, DEED_LEGACY, GENETIC, HOUSE_LEGACY_LEVELS, LEGACY, LEGACY_LEVELS, POWER_GENES,
                    ROMAN, STORY)
 
@@ -52,7 +53,8 @@ def seed_gene(realm, c, g):
 
 # ---------------------------------------------------------------- legacies
 def level_of(points, table=LEGACY_LEVELS):
-    return sum(points >= t for t in table)
+    """How many thresholds the points have reached (the tables are sorted, so a binary search)."""
+    return bisect_right(table, points)
 
 
 def legacy_level(realm, c, kind):

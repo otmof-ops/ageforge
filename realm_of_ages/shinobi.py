@@ -234,7 +234,8 @@ def mission(realm, c, cl):
         if not tgts:
             return
         t = tgts[int(rng.integers(len(tgts)))]
-        defence = t.cr() * (2 if t.undead else 1) + 10 * getattr(tk, "security", 0.0)
+        from .society import court_guard
+        defence = t.cr() * (2 if t.undead else 1) + 10 * court_guard(realm, tk, t)
         if rng.random() < pw / (pw + 3 * defence + 500):
             c.gold += 400
             gain_fame(realm, c, "shinobi", 40)

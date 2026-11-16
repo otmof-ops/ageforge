@@ -224,6 +224,10 @@ def end_war(realm, key, w, outcome):
         else:
             claimant = realm.chars.get(goal.get("claimant"))
             from .dynasty import crown, end_reign
+            if claimant is not None and claimant.ruled is not None and claimant.ruled[2] is None:
+                kids = [realm.chars[i] for i in claimant.children if i in realm.chars]
+                kids = [x for x in kids if x.alive and x.adult(realm.year) and not (x.ruled and x.ruled[2] is None)]
+                claimant = min(kids, key=lambda x: x.born) if kids else None   # one person, one throne
             if claimant is not None and claimant.alive and rb is not None:
                 realm.kill(rb, f"was deposed by {ka.name} and did not survive it", quiet=True, by=ra)
                 end_reign(realm, kb, f"deposed by {ka.name}")

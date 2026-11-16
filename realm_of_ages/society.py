@@ -151,6 +151,12 @@ def heist(realm, c):
               [(it, "market of " + k.name, k.market) for it in k.market[:5]]
     if not targets:
         return
+    guard = court_guard(realm, k, None)
+    if rng.random() < guard / (guard + skill(realm, c, "Security") + 20):   # the watch is waiting
+        c.jailed_until = realm.year + int(rng.integers(5, 15))
+        realm.say(f"{realm.who(c)} is taken in the {targets[0][1].split(' of ')[0]} of {k.name} and thrown in irons.",
+                  minor=True)
+        return
     it, where, src = max(targets, key=lambda t: t[0].bonus)
     src.remove(it)
     from .heroes import give_item
@@ -160,6 +166,18 @@ def heist(realm, c):
     gain_fame(realm, c, "Security", 60 + 100 * it.bonus)
     realm.say(f"**A heist.** {realm.who(c)} lifts {it.label()} from the {where}. "
               f"The bounty on their head is now {c.bounty:,.0f} gold.", minor=it.rarity < 4)
+
+
+RANK_GUARD = {"tribe": 0, "chiefdom": 15, "duchy": 30, "kingdom": 60, "empire": 90}
+
+
+def court_guard(realm, k, tgt):
+    """How well a court keeps its own: the guard a realm of its rank can afford, what it has learned from losses,
+    and a regency's watch over a child on the throne."""
+    g = RANK_GUARD.get(getattr(k, "rank", "tribe"), 0) + getattr(k, "security", 0.0)
+    if tgt is not None and k.ruler == tgt.id and not tgt.adult(realm.year):
+        g += 40
+    return g
 
 
 def willing(realm, kid):
@@ -193,7 +211,7 @@ def contract(realm, c):
     tgt = cands[int(rng.integers(len(cands)))]
     spy = realm.chars.get(tk.council.get("spymaster"))
     defence = tgt.cr() / 50 + (spy.attr("intr") * 3 if spy else 0) + (20 if tgt.undead else 0) \
-        + getattr(tk, "security", 0.0)                                  # guards, tasters, locked doors
+        + court_guard(realm, tk, tgt)                                   # guards, tasters, locked doors
     attack = skill(realm, c, "Sneak") + skill(realm, c, "Blade") / 2 + skill(realm, c, "Alchemy") / 3
     use(realm, c, "Sneak", 2.0)
     use(realm, c, "Blade", 1.0)

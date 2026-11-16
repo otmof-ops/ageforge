@@ -275,9 +275,7 @@ def grieve(realm, c, by, amount, whom):
 
 def on_death(realm, dead, by=None):
     """Everyone who loved the dead grieves; if someone is to blame, they remember."""
-    lovers = getattr(dead, "loved_by", None)
-    if lovers is None:                                                # an old save without the index: scan once
-        lovers = [i for i in realm.living if dead.id in getattr(realm.chars[i], "loves", {})]
+    lovers = getattr(dead, "loved_by", ())                            # the index is kept from the first love on
     for i in list(lovers):
         c = realm.chars.get(i)
         if c is None or not c.alive:

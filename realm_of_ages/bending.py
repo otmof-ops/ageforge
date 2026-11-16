@@ -190,8 +190,8 @@ def train(realm, c):
     # benders in the tribes guard their homes from monsters
     if getattr(c, "tribe", None) and c.adult(realm.year) and rng.random() < 0.15:
         t = realm.tribes[c.tribe]
-        ms = [m for m in realm.monsters if m.alive and m.kind != "calamity" and not getattr(m, "sea", False) and
-              math.hypot(m.pos[0] - t.pos[0], m.pos[1] - t.pos[1]) < 20]
+        ms = [m for m in realm.monsters if m.alive and m.kind not in ("calamity", "dragon") and not getattr(m, "sea", False)
+              and math.hypot(m.pos[0] - t.pos[0], m.pos[1] - t.pos[1]) < 20]       # no one hunts a dragon alone
         if ms:
             m = ms[0]
             pw = bend_power(realm, c)
