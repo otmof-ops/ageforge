@@ -35,7 +35,7 @@ A slice is done when its numbers sit inside the Python engine's own seed-to-seed
 |---|---|---|---|
 | 0 | Foundation: PCG64, territory | world (part) | done |
 | 1 | Tables and world generation: map, landmasses, resources, first tribes and towns | data, data2, geography, resources, world (init) | done. 8 seeds: map, resources, ruins, 32 tribes with capitals, rulers, kin, houses, bloodlines, territory all inside Python's spread; 5x faster. Clans and bending tribes (about 30 more people at the start) come with slice 6 |
-| 2 | The land's year: climate, harvest, grain, soil, births and deaths of towns, labour, classes, money, trade | climate, economy, markets, populace (part); brought forward: stewardship, the treasury (civics.armies_year), the council (dynasty.council) | climate done (64 runs within 1 se). The land, labour, classes, tax, treasury, council, trade, money and stewardship run in `World.step`: 200 years in 0.4 s (Python's full year: 35 s). Against the full Python world over 3 seeds: towns and people within 5-20%, poverty 0.12 vs 0.11 at year 50 and 0.28-0.39 vs 0.24-0.34 at year 200. Left: populace (moods, risings, plague) |
+| 2 | The land's year: climate, harvest, grain, soil, births and deaths of towns, labour, classes, money, trade | climate, economy, markets, populace (part); brought forward: stewardship, the treasury (civics.armies_year), the council (dynasty.council) | climate done (64 runs within 1 se). The land, labour, classes, tax, treasury, council, trade, money and stewardship run in `World.step`: 200 years in 0.4 s (Python's full year: 35 s). Against the full Python world over 3 seeds: towns and people within 5-20%, poverty 0.12 vs 0.11 at year 50 and 0.28-0.39 vs 0.24-0.34 at year 200. Populace (moods, risings, plague): pandemics and big outbreaks match (1-2 per 300 years in both); risings fewer (0-1 vs 1-6) until their causes land (wars, faith, lords: slice 4). 300 years in 0.8 s (Python 70-90 s) |
 | 3 | People: characters, skills, classes, levels, legacies, lineage, the heart, youth, mortality, births | characters, skills, lineage, heart, youth, court (part) | |
 | 4 | Realms: dynasties, succession, partition, councils, titles, factions, governance, civics, statecraft, war | dynasty, titles, governance, civics, statecraft, warfare, opinion | |
 | 5 | Society: crafts, guilds, crime, faith, stewardship, the Wardens' Hall, bounties | crafts, society, stewardship, guild, bounties | |
@@ -53,3 +53,6 @@ Kept in the Rust engine for now so the two can be compared; to be fixed in both 
   id. So realms 0-3 start with the Human/Elf/Dwarf/Orc relations whatever their peoples are, and every later
   tribe starts at 0 with everyone. The intent is plainly per people: seed `relation[a][b]` from
   `BASE_REL[people(a)][people(b)]` for every pair of realms.
+- **Fixed:** `dynasty.dynasty_year` crashed (`KeyError: None` in `council`) when a ruler died in a plot and the
+  crown passed to someone already ruling elsewhere: the second `succeed` call lacked the extinct check the first
+  one has. Found on seed 3 near year 200.

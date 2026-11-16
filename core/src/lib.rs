@@ -12,6 +12,7 @@ mod economy;
 mod geography;
 mod grid;
 mod people;
+mod populace;
 mod state;
 mod stewardship;
 mod rng;

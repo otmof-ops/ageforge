@@ -27,6 +27,10 @@ pub struct State {
     pub stats_forced: Vec<(i64, usize)>,
     pub mined: f64,
     pub bankruptcies: Vec<(i64, usize)>,
+    pub risings: Vec<(i64, usize, usize, &'static str)>,
+    pub epidemics: Vec<crate::people::Epidemic>,
+    pub last_pandemic: i64,
+    pub last_plague: i64,
     pub log: Vec<(i64, bool, String)>, // (year, minor, text)
     pub climate: Climate,
     pub blight: i64,
@@ -130,7 +134,8 @@ impl State {
                                jobless: 0.0, farm_fill: 1.0, labour_short: 0.0, skill: None, arcane: 0.0,
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
                                cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
-                               coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0 });
+                               coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0, burghers: 0.08,
+                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1 });
         id
     }
 
@@ -256,7 +261,7 @@ impl State {
             genetic, latent, personality, attrs, prowess, talent, life, classes: vec![(cls, 1)], level: 1, xp: 0.0,
             hp: 100.0, renown: 0.0, branch: vec![], capstones: vec![], attributes, skills, legacy, legitimacy: None,
             tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, undead: false, built: 0,
-            disgraced_until: 0, titles: vec![], memories: vec![], alive: true, died: None,
+            disgraced_until: 0, titles: vec![], memories: vec![], alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)

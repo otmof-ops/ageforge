@@ -54,7 +54,7 @@ impl World {
         let st = State { year: 0, rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
                          owner: Grid::new(h, w, -1), relation, stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
-                         bankruptcies: vec![], log: vec![],
+                         bankruptcies: vec![], risings: vec![], epidemics: vec![], last_pandemic: -999, last_plague: -999, log: vec![],
                          climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
                          cultures: (0..4).map(|p| crate::people::Culture { people: p, innovations: Default::default() }).collect(),
                          famines: vec![], migrants: 0.0, grain_moved: 0.0 };
@@ -145,6 +145,8 @@ impl World {
             self.st.trade_year();
             self.st.money_year();
             self.st.manage_year();
+            self.st.moods_year();
+            self.st.plague_year();
         }
     }
 

@@ -49,6 +49,8 @@ pub struct Character {
     pub memories: Vec<(usize, &'static str, f64, f64, i64)>, // (about whom, why, value, decay, year), for opinion
     pub alive: bool,
     pub died: Option<i64>,
+    pub cause: Option<String>,
+    pub home: usize,
     pub gold: f64,
 }
 
@@ -135,6 +137,27 @@ pub struct Town {
     pub trade_gain: f64,
     pub real_income: f64,
     pub bullion: f64,
+    // the common people (populace)
+    pub burghers: f64,
+    pub mood_p: Option<f64>,
+    pub mood_b: f64,
+    pub rising: Option<i64>,
+    pub rallied: f64,
+    pub immune: f64,
+    pub sick_now: f64,
+    pub crime: f64,
+}
+
+pub struct Epidemic {
+    pub name: String,
+    pub start: i64,
+    pub fatality: f64,
+    pub spread: f64,
+    pub great: bool,
+    pub deaths: f64,
+    pub towns: std::collections::HashSet<usize>,
+    pub front: Vec<(usize, f64)>,
+    pub end: Option<i64>,
 }
 
 pub struct Realm {
