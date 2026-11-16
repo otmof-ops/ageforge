@@ -228,8 +228,8 @@ def tribute_year(realm, dragons):
                 k.gold -= price
                 m.hoard += price
                 book(realm, kid, "dragon tribute", -price, f"tribute to {m.name}")
-                realm.say(f"**A bargain with a dragon.** {realm.who(r)} sends gold up the mountain to {m.name}, "
-                          f"{price:,.1f} a year, and {k.name} is spared its fire.")
+                realm.say(f"**A bargain with a dragon.** {realm.who(r)} sends a tithe of cattle and gold up the mountain "
+                          f"to {m.name} every year, and {k.name} is spared its fire.")
                 r.legitimacy = max(0.0, (r.legitimacy or 50) - (6 if k.people == 3 else 2))
                 for d in realm.duchies.values():
                     if d["ctrl"] == kid and d["holder"] not in (None, r.id) and d["holder"] in realm.chars:

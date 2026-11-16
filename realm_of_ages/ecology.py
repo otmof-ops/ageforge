@@ -267,7 +267,8 @@ def alphas(realm):
     if realm.terrain[pos] == OCEAN:
         return
     where = eco.region(rng, ey, ex)
-    title = f"the Great {sp['name'].title()} of {where.replace('the ', '')}"
+    base = sp['name'][6:] if sp['name'].lower().startswith("great ") else sp['name']
+    title = f"the Great {base.title()} of {where.replace('the ', '')}"
     power = 150 * sp["size"] * (1 + sp["troph"]) * (1.5 if sp["mythic"] else 1.0)
     m = realm.new_monster("beast", pos, power, name=title, quiet=True)
     m.species, m.eco_cell = sp["name"], (int(ey), int(ex))

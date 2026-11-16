@@ -5,7 +5,7 @@ import numpy as np
 
 from . import (beasts, bending, crafts, dungeons, dynasty, ecology, geography, governance, heroes, legends, monsters,
                titles, youth, civics, resources, statecraft, court, opinion, heart, economy, populace,
-               warfare, events, godmode, markets, stewardship, arcana, bounties, guild,
+               warfare, events, godmode, markets, stewardship, arcana, bounties, guild, gates,
                seafaring,
                shinobi, society)
 from .characters import Item, SINGULAR
@@ -703,8 +703,10 @@ class Realm:
                 w = self.mana[cells[:, 0], cells[:, 1]] + 0.05
                 r, c = cells[rng.choice(len(cells), p=w / w.sum())]
                 power = rng.uniform(*prange)
-                if kind == "demon" and rng.random() < 0.5:              # the veil holds more often than not
-                    continue
+                if kind == "demon":                                      # the Veil holds; a fray lets one through
+                    if not gates.may_rift(self) or rng.random() > 0.15:
+                        continue
+                    power = gates.rift_power(self)
                 if kind == "dragon" and any(o.alive and o.kind == "dragon" and dist(o.pos, (r, c)) < 45
                                             for o in self.monsters):
                     continue                                            # every dragon needs a great range to hunt
@@ -735,9 +737,8 @@ class Realm:
             name = f"{self.name(DRAGON_SYL)} {rng.choice(DRAGON_EPITHET)}"
             self.say(f"**A dragon.** {name} comes down out of the peaks and makes a lair near {near}.")
         elif kind == "demon":
-            top = max(5, getattr(self, "world_tier", 0) + 2)             # no more than two tiers past the best mortal
-            power = min(power, (top - 4) * 600 + 599)
-            name = f"{self.name(DEMON_SYL)}, a demon of the {TIER_WORDS[int(min(10, 4 + power // 600))]} tier"
+            power = gates.demon_cap(self, power)                         # nothing above the fifth through a fray
+            name = f"{self.name(DEMON_SYL)}, a demon of the {TIER_WORDS[gates.tier_of(power)]} tier"
             self.say(f"A ley-nexus tears near {near} and {name} steps through.")
         elif kind == "wraith":
             name = f"the Wraith of the {rng.choice(WILD_A)} {rng.choice(WILD_B[SWAMP])}"
@@ -972,6 +973,7 @@ class Realm:
         ecology.ecology_year(self)
         dungeons.dungeons_year(self)
         monsters.monster_year(self)
+        gates.gates_year(self)
         pf, pairs = self.borders()
         self.diplomacy(pf, pairs)
         self.events()
