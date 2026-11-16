@@ -152,6 +152,37 @@ out.append("pub const PERKS: [[&str; 5]; %d] = [%s];" % (len(skills), ", ".join(
 nums("PERK_AT", data2.PERK_AT)
 out.append("pub const POWER_GENES: [(&str, &str); %d] = [%s];" % (len(data.POWER_GENES), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data.POWER_GENES.items())))
 
+# ---- civics: innovations, regiments, traditions, views
+from realm_of_ages import civics as cv  # noqa: E402
+NUMK = ["walls_cap", "garrison", "food", "levy", "legit", "corruption", "ships", "material", "research", "crown",
+        "wealth", "legacy"]
+FLAGK = ["colonize", "feudal", "theocracy", "republic", "admin"]
+out.append(f"pub const INNOV_NUM: [&str; {len(NUMK)}] = [{', '.join(rs_str(k) for k in NUMK)}];")
+out.append("pub struct Innov { pub name: &'static str, pub era: usize, pub cat: &'static str, pub num: [f64; %d], "
+           "pub flags: &'static [&'static str], pub maa: &'static [&'static str] }" % len(NUMK))
+rows = []
+for era, row in enumerate(cv.INNOVATIONS):
+    for n, cat, fx in row:
+        num = ", ".join(f(fx.get(k, 0)) for k in NUMK)
+        flags = ", ".join(rs_str(k) for k in FLAGK if fx.get(k))
+        maa = ", ".join(rs_str(m) for m in fx.get("maa", []))
+        rows.append(f"Innov {{ name: {rs_str(n)}, era: {era}, cat: {rs_str(cat)}, num: [{num}], flags: &[{flags}], maa: &[{maa}] }}")
+out.append(f"pub const INNOVATIONS: [Innov; {len(rows)}] = [{', '.join(rows)}];")
+nums("ERA_COST", cv.COST)
+strs("ERAS", cv.ERAS)
+out.append("pub const MAA: [(&str, f64, f64); %d] = [%s];" % (len(cv.MAA), ", ".join(f"({rs_str(m)}, {f(p)}, {f(u)})" for m, (p, u) in cv.MAA.items())))
+strs("CULTURE_UNIT", cv.CULTURE_UNIT); strs("ETHOS", cv.ETHOS)
+out.append("pub const TRADITIONS: [(&str, &[(&str, f64)], [f64; 5]); %d] = [%s];" % (len(cv.TRADITIONS), ", ".join(
+    f"({rs_str(t)}, &[{', '.join(f'({rs_str(k)}, {f(v)})' for k, v in fx.items())}], [{', '.join(f(nud.get(a, 0)) for a in cv.AXES)}])"
+    for t, (fx, nud) in cv.TRADITIONS.items())))
+out.append("pub const CULTURE_VIEWS: [[f64; 5]; 4] = [%s];" % ", ".join("[" + ", ".join(f(v[a]) for a in cv.AXES) + "]" for v in cv.CULTURE_VIEWS))
+govs = list(cv.GOV_VIEWS)
+strs("GOVS", govs)
+out.append("pub const GOV_VIEWS: [[f64; 5]; %d] = [%s];" % (len(govs), ", ".join("[" + ", ".join(f(cv.GOV_VIEWS[g][a]) for a in cv.AXES) + "]" for g in govs)))
+strs("GREAT_WORKS", cv.GREAT_WORKS)
+from realm_of_ages import resources as _rs  # noqa: E402
+strs("CAVALRY", sorted(_rs.CAVALRY))
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")
 print(f"wrote src/tables.rs ({len(out)} lines)")

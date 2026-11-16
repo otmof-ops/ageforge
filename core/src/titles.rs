@@ -389,7 +389,8 @@ impl State {
         let id = self.realms.len();
         self.realms.push(Realm { id, people, name, short, rank, gov, law: if people == 3 { "strongest" } else { "elective" }, color,
             ruler: NONE, house: NONE, regnal: vec![], reigns: vec![], place, extinct: false, growth_mult: 1.0, tax_now: 0.06,
-            gold: 50.0, crown_law: 1, tax_relief: 0, regent: NONE, taken: 0, lost: 0, civil_wars: 0, physician: false,
+            gold: 50.0, crown_law: 1, tolerant: true, expansionist: false, agenda: "unity", agenda_for: NONE, maa: vec![],
+                army_power: 0.0, garrison_bonus: 0.0, aggr: 1.0, reform: 0.0, agreement: 1.0, great_works: vec![], held: vec![], tax_relief: 0, regent: NONE, taken: 0, lost: 0, civil_wars: 0, physician: false,
             parent: NONE, founded_year: self.year, ended: None, battle_mult: 1.0, warships: 4.0, ship_tier: 0, allies: vec![],
             factions: vec![], faction_since: vec![], ultimatum_cooldown: vec![], council: [NONE; 6], council_for: NONE,
             econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0, income: 0.0, real_gdp: 0.0,

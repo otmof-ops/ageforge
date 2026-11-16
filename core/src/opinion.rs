@@ -4,6 +4,7 @@
 
 use crate::people::*;
 use crate::state::State;
+use crate::tables::*;
 
 impl State {
     /// `who` remembers something `about` did: the stronger memory of the same name wins.
@@ -62,6 +63,22 @@ impl State {
             if cb.tyranny > 5.0 { t -= (cb.tyranny / 2.0).round(); }
             if let Some((_, start, _)) = cb.ruled { let reign = y - start; if reign < 10 { t -= ((10 - reign) * 2) as f64; } }
             if self.realms[ca.realm].council.contains(&a) { t += 10.0; }
+            if let Some(n) = ca.view_noise {
+                // how the realm is ruled (civics.agreement), from views already formed
+                let cu = &self.cultures[ca.people];
+                let k = &self.realms[ca.realm];
+                let mut g = GOV_VIEWS[GOVS.iter().position(|x| *x == k.gov).unwrap_or(0)];
+                g[0] += 0.15 * (k.crown_law as f64 - 1.0);
+                let mut v = cu.trend;
+                let p = |x: &str| ca.has_trait(x) as u8 as f64;
+                v[0] += 0.3 * p("ambitious") + 0.2 * p("cruel") - 0.3 * p("kind") - 0.2 * p("trusting");
+                v[2] += 0.4 * p("zealous") - 0.4 * p("cynical");
+                v[3] += 0.3 * p("greedy") - 0.2 * p("generous");
+                v[4] += 0.2 * p("content") - 0.3 * p("ambitious") - 0.1 * p("diligent");
+                v[1] += if ca.house != NONE && self.houses[ca.house].rulers > 0 { 0.3 } else { -0.1 };
+                let agree = 1.0 - (0..5).map(|i| ((v[i] + n[i]).clamp(-1.0, 1.0) - g[i]).abs()).sum::<f64>() / 5.0;
+                t += (30.0 * (agree - 0.55)).round();
+            }
         }
         for m in &ca.memories { if m.0 == b { t += m.2.round(); } }
         t.trunc()

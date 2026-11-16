@@ -267,7 +267,7 @@ impl State {
             hp: 100.0, renown: 0.0, branch: vec![], capstones: vec![], attributes, skills, legacy, legitimacy: None,
             tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, undead: false, built: 0,
             disgraced_until: 0, titles: vec![], memories: vec![], deeds: vec![], perks: vec![], skill_progress: [0.0; 8],
-            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, duchies: vec![], op_bias: None, lordships: vec![], happy: 0.0, relations: vec![], rival_ruler: NONE, hooks: vec![], alive: true, died: None, cause: None, home: NONE,
+            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, duchies: vec![], op_bias: None, view_noise: None, profession: None, lordships: vec![], happy: 0.0, relations: vec![], rival_ruler: NONE, hooks: vec![], alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -505,7 +505,8 @@ impl State {
             self.realms.push(Realm { id: pid, people: f, name: String::new(), short: String::new(), rank: "tribe",
                 gov: "tribal", law: if f == 3 { "strongest" } else { "elective" }, color, ruler: NONE, house: NONE,
                 regnal: vec![], reigns: vec![], place: String::new(), extinct: false,
-                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0, regent: NONE, taken: 0, lost: 0,
+                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tolerant: true, expansionist: false, agenda: "unity", agenda_for: NONE, maa: vec![],
+                army_power: 0.0, garrison_bonus: 0.0, aggr: 1.0, reform: 0.0, agreement: 1.0, great_works: vec![], held: vec![], tax_relief: 0, regent: NONE, taken: 0, lost: 0,
                 civil_wars: 0, physician: false, parent: NONE, founded_year: 0, ended: None, battle_mult: 1.0, warships: 4.0,
                 ship_tier: 0, allies: vec![], factions: vec![], faction_since: vec![], ultimatum_cooldown: vec![], council: [NONE; 6],
                 council_for: NONE, econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0,

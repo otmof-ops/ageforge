@@ -25,6 +25,18 @@ const MINERAL: [&str; 11] = ["stone", "copper", "iron", "gold", "silver", "gems"
 const MATERIAL: [&str; 10] = ["iron", "copper", "timber", "mithril", "adamantine ore", "ancient wood", "furs", "silk",
                               "ivory", "amber"];
 const SUBSIST: f64 = 0.0030;
+// farm mine craft trade clergy service arcane
+const INNOV_SKILL: [(&str, [f64; 7]); 17] = [
+    ("Hunting Grounds", [0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), ("Ironworking", [0.0, 0.05, 0.05, 0.0, 0.0, 0.0, 0.0]),
+    ("Two-Field Rotation", [0.06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), ("Coinage", [0.0, 0.0, 0.0, 0.06, 0.0, 0.05, 0.0]),
+    ("Monastery Schools", [0.03; 7]), ("Steel Forging", [0.0, 0.0, 0.07, 0.0, 0.0, 0.0, 0.0]),
+    ("Sea Charts", [0.0, 0.0, 0.0, 0.04, 0.0, 0.0, 0.0]), ("Three-Field Rotation", [0.07, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Guild Charters", [0.0, 0.0, 0.10, 0.06, 0.0, 0.0, 0.0]), ("Universities", [0.05; 7]),
+    ("Silversteel Craft", [0.0, 0.05, 0.05, 0.0, 0.0, 0.0, 0.0]), ("Heavy Plough", [0.08, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Banking Houses", [0.0, 0.0, 0.0, 0.10, 0.0, 0.0, 0.0]), ("Printed Sagas", [0.0, 0.0, 0.0, 0.03, 0.04, 0.0, 0.0]),
+    ("Adamant Forging", [0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.0]), ("Royal Chancery", [0.0, 0.0, 0.0, 0.0, 0.0, 0.05, 0.0]),
+    ("Bureaucracy", [0.0, 0.0, 0.0, 0.0, 0.0, 0.05, 0.0]),
+];
 const SAVE: [f64; 3] = [0.02, 0.12, 0.2];
 const SIGMA: [f64; 3] = [0.5, 0.6, 0.8];
 const TAX_SHARE: [f64; 3] = [0.8, 1.0, 0.4];
@@ -50,13 +62,6 @@ pub fn poor_share(line: f64, mean: f64, sigma: f64) -> f64 {
 impl State {
     /// The year for every town's land: harvest, grain, people, then work and its fruits (world.economy).
     pub fn land_year(&mut self) {
-        // the crown's rate (civics.armies_year): set by the form of government and the crown law
-        for k in self.realms.iter_mut() {
-            let tax = match k.gov { "tribal" => 0.015, "clan" => 0.025, "feudal" => 0.03, "republic" => 0.05,
-                                    "theocracy" => 0.035, _ => 0.05 };
-            k.tax_now = (0.12 + (tax - 0.03) * 4.0 + 0.05 * (k.crown_law as f64 - 1.0))
-                * if k.tax_relief > self.year { 0.6 } else { 1.0 };
-        }
         let n = self.towns.len();
         let (mut food, mut wealth, mut mana, mut cells) = (vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0usize; n]);
         let mut res_count: Vec<Vec<(usize, u32)>> = vec![vec![]; n];
@@ -82,6 +87,9 @@ impl State {
     fn town_year(&mut self, food: &[f64], mana: &[f64], cells: &[usize], res: &[Vec<(usize, u32)>]) {
         let live: Vec<usize> = (0..self.towns.len()).filter(|&i| self.towns[i].alive).collect();
         // 1. the harvest
+        let food_tech: Vec<f64> = self.cultures.iter().map(|c| c.total("food")).collect();
+        let rest_bonus: Vec<f64> = self.cultures.iter().map(|c| 0.006 * c.innovations.contains("Two-Field Rotation") as u8 as f64
+            + 0.01 * c.innovations.contains("Three-Field Rotation") as u8 as f64 + 0.004 * c.innovations.contains("Hunting Grounds") as u8 as f64).collect();
         for &i in &live {
             let realm_tier = 0.0;
             let s = &mut self.towns[i];
@@ -91,13 +99,13 @@ impl State {
             s.res_food = rf;
             s.bullion = res[i].iter().map(|x| x.1 as f64 * match RESOURCES[x.0].name { "gold" => 0.6, "silver" => 0.25, _ => 0.0 }).sum();
             s.res_wealth = 1.5 * res[i].iter().filter(|x| matches!(RESOURCES[x.0].effect, "wealth" | "treasury")).map(|x| x.1 as f64).sum::<f64>();
-            let tech = 1.0;
+            let tech = 1.0 + food_tech[s.culture];
             let magic = 1.0 + 0.15 * s.magic + 0.01 * realm_tier;
             let base = food[i] * 25.0;
             // soil: worn by too many mouths, rested by fallow (climate.soil_year)
             let press = s.pop / (base * tech).max(1.0);
             let wear = 0.008 * (press - 0.6).max(0.0);
-            let rest = 0.01;
+            let rest = 0.01 + rest_bonus[s.culture];
             s.soil = (s.soil - wear + rest * (1.05 - s.soil)).clamp(0.5, 1.1);
             let harvest = self.climate.at(&self.climate.harvest, s.pos);
             let mut prod = base * s.soil * harvest * tech * magic * (1.0 + rf);
@@ -209,6 +217,15 @@ impl State {
 
     /// Jobs, workers, skill and output for every town; income, wealth, walls, the classes; the idle move to work.
     fn labour_year(&mut self, terr_wealth: &[f64], res: &[Vec<(usize, u32)>]) {
+        let walls_caps: Vec<u32> = (0..self.realms.len()).map(|k| self.walls_cap(k)).collect();
+        // what each people's learning makes of each trade (markets.culture_targets)
+        let targets: Vec<[f64; 7]> = (0..4).map(|p| {
+            let mut t = PEOPLE_SKILL[p];
+            for &(n, fx) in INNOV_SKILL.iter() {
+                if self.cultures[p].innovations.contains(n) { for j in 0..7 { t[j] += fx[j]; } }
+            }
+            t
+        }).collect();
         for i in 0..self.towns.len() {
             if !self.towns[i].alive { continue; }
             let k = self.towns[i].realm;
@@ -262,7 +279,7 @@ impl State {
             let bld_of = [B_MILL, B_MINE, B_WORKSHOPS, B_MARKET, usize::MAX, usize::MAX, B_COLLEGE];
             for j in 0..7 {
                 let own = if bld_of[j] == usize::MAX { 0.0 } else { bl(bld_of[j]) };
-                let target = (PEOPLE_SKILL[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j]).min(1.0);
+                let target = (targets[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j]).min(1.0);
                 sk[j] += 0.06 * (target - sk[j]);
             }
             s.skill = Some(sk);
@@ -279,7 +296,7 @@ impl State {
             s.real_income = real;
             s.income = real;
             s.wealth = s.wealth * 0.96 + real;
-            let walls_cap = 1;
+            let walls_cap = walls_caps[k];
             if s.wealth > 80.0 + 50.0 * s.walls as f64 && s.walls < walls_cap && self.rng.random() < 0.1 {
                 s.wealth -= 60.0 + 40.0 * s.walls as f64;
                 s.walls += 1;

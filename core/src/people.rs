@@ -58,6 +58,8 @@ pub struct Character {
     pub epithet: Option<String>,
     pub duchies: Vec<DKey>,
     pub op_bias: Option<f64>,
+    pub view_noise: Option<[f64; 5]>,
+    pub profession: Option<&'static str>,
     pub lordships: Vec<usize>,
     pub happy: f64,
     pub relations: Vec<(usize, bool)>,     // (whom, friend: true / rival: false)
@@ -203,6 +205,18 @@ pub struct Realm {
     pub tax_now: f64,
     pub gold: f64,
     pub crown_law: u32,
+    pub tolerant: bool,
+    pub expansionist: bool,
+    pub agenda: &'static str,
+    pub agenda_for: usize,
+    pub maa: Vec<(usize, u32)>,             // (index into MAA, regiments)
+    pub army_power: f64,
+    pub garrison_bonus: f64,
+    pub aggr: f64,
+    pub reform: f64,
+    pub agreement: f64,
+    pub great_works: Vec<String>,
+    pub held: Vec<usize>,                   // every resource held
     pub tax_relief: i64,
     pub regent: usize,
     pub taken: u32,
@@ -246,7 +260,38 @@ pub struct Realm {
 
 pub struct Culture {
     pub people: usize,
+    pub era: usize,
     pub innovations: std::collections::HashSet<&'static str>,
+    pub learned: Vec<(&'static str, i64)>,
+    pub progress: f64,
+    pub focus: Option<usize>,              // index into INNOVATIONS
+    pub traditions: Vec<usize>,            // indexes into TRADITIONS
+    pub culture_points: f64,
+    pub trend: [f64; 5],                   // auth succ faith econ trad
+    pub golden: i64,
+    pub dark: i64,
+    pub history: Vec<(i64, String)>,
+}
+
+impl Culture {
+    pub fn new(people: usize) -> Self {
+        Culture { people, era: 0, innovations: Default::default(), learned: vec![], progress: 0.0, focus: None,
+                  traditions: vec![], culture_points: 0.0, trend: CULTURE_VIEWS[people], golden: 0, dark: 0, history: vec![] }
+    }
+    fn innov(&self) -> impl Iterator<Item = &'static crate::tables::Innov> + '_ {
+        INNOVATIONS.iter().filter(|i| self.innovations.contains(i.name))
+    }
+    pub fn has(&self, flag: &str) -> bool { self.innov().any(|i| i.flags.contains(&flag)) }
+    /// A culture's summed bonus for one effect, innovations and traditions together.
+    pub fn total(&self, key: &str) -> f64 {
+        let j = INNOV_NUM.iter().position(|k| *k == key);
+        let a: f64 = j.map(|j| self.innov().map(|i| i.num[j]).sum()).unwrap_or(0.0);
+        a + self.traditions.iter().map(|&t| TRADITIONS[t].1.iter().filter(|x| x.0 == key).map(|x| x.1).sum::<f64>()).sum::<f64>()
+    }
+    pub fn best(&self, key: &str, default: f64) -> f64 {
+        let j = INNOV_NUM.iter().position(|k| *k == key).unwrap();
+        self.innov().map(|i| i.num[j]).filter(|&v| v != 0.0).fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v)))).unwrap_or(default)
+    }
 }
 
 /// A duchy's key: (landmass, row / 24, column / 24); a kingdom title's: the same at 72.

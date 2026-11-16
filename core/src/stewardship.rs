@@ -57,9 +57,12 @@ impl State {
             if g < 0 || o < 0 { continue; }
             let k = self.towns[o as usize].realm;
             let r = g as usize;
-            if matches!(RESOURCES[r].kind, "luxury" | "strategic") && !held[k].contains(&r) { held[k].push(r); }
+            if !held[k].contains(&r) { held[k].push(r); }
         }
-        for (k, h) in held.into_iter().enumerate() { self.realms[k].goods = h; }
+        for (k, h) in held.into_iter().enumerate() {
+            self.realms[k].goods = h.iter().copied().filter(|&r| matches!(RESOURCES[r].kind, "luxury" | "strategic")).collect();
+            self.realms[k].held = h;
+        }
     }
 
     /// The council (dynasty.council): weighed afresh every five years, on a new ruler, or when a seat falls empty.
@@ -114,26 +117,6 @@ impl State {
                     }
                     _ => self.realms[k].council[seat] = NONE,
                 }
-            }
-        }
-    }
-
-    /// Taxes in, the levy and garrisons (civics.armies_year; regiments come with innovations, slice 4).
-    pub fn treasury_year(&mut self) {
-        for k in 0..self.realms.len() {
-            if !self.active(k) { continue; }
-            let towns = self.alive_towns_of(k);
-            let base: f64 = towns.iter().map(|&t| self.towns[t].income).sum();
-            let realm = &mut self.realms[k];
-            let taxes = base * realm.tax_now * (1.0 - realm.corruption) * realm.tax_mult * realm.collect;
-            realm.gold += taxes;
-            let levy = match realm.gov { "tribal" => 0.12, "clan" => 0.1, "feudal" => 0.08, "republic" => 0.05,
-                                         "theocracy" => 0.07, _ => 0.06 };
-            realm.levy = towns.iter().map(|&t| self.towns[t].pop).sum::<f64>() * levy;
-            for &t in &towns {
-                let s = &mut self.towns[t];
-                s.garrison = s.pop * 0.02 * (1.0 + 0.2 * s.walls as f64);
-                s.walls = s.walls.min(1);
             }
         }
     }

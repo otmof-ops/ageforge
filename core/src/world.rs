@@ -57,7 +57,7 @@ impl World {
                          ktitles: Default::default(), breakaways: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
                          bankruptcies: vec![], risings: vec![], epidemics: vec![], last_pandemic: -999, last_plague: -999, log: vec![],
                          climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
-                         cultures: (0..4).map(|p| crate::people::Culture { people: p, innovations: Default::default() }).collect(),
+                         cultures: (0..4).map(crate::people::Culture::new).collect(),
                          famines: vec![], migrants: 0.0, grain_moved: 0.0 };
         let mut world = World { st };
         world.st.place_resources();
@@ -103,7 +103,7 @@ impl World {
             d.set_item("id", k.id)?; d.set_item("people", k.people)?; d.set_item("name", &k.name)?;
             d.set_item("short", &k.short)?; d.set_item("rank", k.rank)?; d.set_item("gov", k.gov)?;
             d.set_item("law", k.law)?; d.set_item("color", k.color)?; d.set_item("ruler", opt(k.ruler))?;
-            d.set_item("house", opt(k.house))?;
+            d.set_item("house", opt(k.house))?; d.set_item("extinct", k.extinct)?;
             Ok(d)
         }).collect()
     }
@@ -146,8 +146,8 @@ impl World {
             self.st.expand();
             self.st.dynasty_year();
             self.st.titles_year();
+            self.st.civics_year();
             self.st.opinion_year();
-            self.st.treasury_year();
             self.st.trade_year();
             self.st.money_year();
             self.st.manage_year();
@@ -179,6 +179,9 @@ impl World {
         self.st.chars.iter().map(|c| (c.people, c.female, c.born, c.died.unwrap_or(-1), c.cause.clone().unwrap_or_default(),
                                       c.children.len(), c.ruled.is_some())).collect()
     }
+
+    /// Per people: (era, innovations learned).
+    fn cultures(&self) -> Vec<(usize, usize)> { self.st.cultures.iter().map(|c| (c.era, c.innovations.len())).collect() }
 
     fn n_characters(&self) -> usize { self.st.chars.len() }
     fn n_houses(&self) -> usize { self.st.houses.len() }
