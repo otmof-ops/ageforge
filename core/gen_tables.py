@@ -70,6 +70,77 @@ out.append("pub struct Res { pub name: &'static str, pub kind: &'static str, pub
            "pub chance: f64, pub effect: &'static str }")
 out.append(f"pub const RESOURCES: [Res; {len(res)}] = [{', '.join(res)}];")
 
+
+# ---- characters: classes (base then prestige), traits, attributes, skills, legacies
+from realm_of_ages import data2  # noqa: E402
+FX_KEYS = ["phys", "magic", "hp", "war", "guard", "vs_monster", "delve", "equip", "tier", "lead", "intrigue"]
+out.append(f"pub const FX_KEYS: [&str; {len(FX_KEYS)}] = [{', '.join(rs_str(k) for k in FX_KEYS)}];")
+classes = list(data.CLASSES) + list(data.PRESTIGE)
+out.append("pub struct Class { pub name: &'static str, pub phys: f64, pub magic: f64, pub school: i8, pub hp: f64, "
+           "pub prestige: bool, pub branches: [(&'static str, usize, [&'static str; 4]); 3], "
+           "pub capstone: &'static str, pub fx: &'static [(usize, f64)] }")
+rows = []
+for n in classes:
+    if n in data.CLASSES:
+        d = data.CLASSES[n]
+        br = ", ".join(f"({rs_str(b)}, {FX_KEYS.index(k)}, [{', '.join(rs_str(x) for x in sk)}])"
+                       for b, k, sk in d["branches"])
+        cap, fx = d["capstone"]
+        school = -1 if d["school"] is None else d["school"]
+        rows.append(f"Class {{ name: {rs_str(n)}, phys: {f(d['phys'])}, magic: {f(d['magic'])}, school: {school}, "
+                    f"hp: {f(d['hp'])}, prestige: false, branches: [{br}], capstone: {rs_str(cap)}, "
+                    f"fx: &[{', '.join(f'({FX_KEYS.index(k)}, {f(v)})' for k, v in fx.items())}] }}")
+    else:
+        d = data.PRESTIGE[n]
+        empty = '("", 0, ["", "", "", ""])'
+        rows.append(f"Class {{ name: {rs_str(n)}, phys: {f(d['phys'])}, magic: {f(d['magic'])}, school: -1, "
+                    f"hp: {f(d['hp'])}, prestige: true, branches: [{empty}, {empty}, {empty}], capstone: \"\", "
+                    f"fx: &[{', '.join(f'({FX_KEYS.index(k)}, {f(v)})' for k, v in d['fx'].items())}] }}")
+out.append(f"pub const CLASSES: [Class; {len(rows)}] = [{', '.join(rows)}];")
+out.append(f"pub const N_BASE_CLASSES: usize = {len(data.CLASSES)};")
+out.append("pub const CLASS_WEIGHTS: [&[(usize, f64)]; 4] = [" + ", ".join(
+    "&[" + ", ".join(f"({classes.index(c)}, {f(w)})" for c, w in cw.items()) + "]" for cw in data.CLASS_WEIGHTS) + "];")
+ATTRS = list(data.ATTRS)
+strs("ATTRS", ATTRS)
+pers = [t for pair in data.PERSONALITY for t in pair]
+strs("PERSONALITY", pers)
+out.append("pub const PERSONALITY_FX: [[f64; 6]; %d] = [%s];" % (len(pers), ", ".join(
+    "[" + ", ".join(f(data.PERSONALITY_FX.get(t, {}).get(a, 0) + data.PERSONALITY_FX.get(t, {}).get("all", 0))
+                    for a in ATTRS) + "]" for t in pers)))
+genes = list(data.GENETIC) + ["half-" + a for a in data.ADJ]
+strs("GENETIC", genes)
+def gfx(t, key):
+    return data.GENETIC.get(t, {}).get(key, 1.0 if key == "life" else 0.0)
+out.append("pub const GENETIC_FX: [[f64; 9]; %d] = [%s];  // dip mar ste intr lrn lore prowess talent life" % (
+    len(genes), ", ".join("[" + ", ".join(f(gfx(t, k)) for k in ATTRS + ["prowess", "talent", "life"]) + "]"
+                          for t in genes)))
+out.append("pub const GENETIC_FREQ: [(usize, f64); %d] = [%s];" % (len(data.GENETIC_FREQ), ", ".join(
+    f"({genes.index(t)}, {f(p)})" for t, p in data.GENETIC_FREQ.items())))
+out.append("pub const BLOODLINES: [usize; %d] = [%s];" % (len(data.BLOODLINES), ", ".join(
+    str(genes.index(t)) for t in data.BLOODLINES)))
+out.append("pub const OPPOSED: [(usize, usize); %d] = [%s];" % (len(data.OPPOSED), ", ".join(
+    f"({genes.index(a)}, {genes.index(b)})" for a, b in data.OPPOSED)))
+strs("ATTRIBUTES", data2.ATTRIBUTES)
+out.append("pub const RACE_ATTR: [[f64; 8]; 4] = [%s];" % ", ".join(
+    "[" + ", ".join(f(ra.get(a, 0)) for a in data2.ATTRIBUTES) + "]" for ra in data2.RACE_ATTR))
+skills = list(data2.SKILLS)
+strs("SKILLS", skills)
+out.append("pub const SKILL_GOV: [usize; %d] = [%s];" % (len(skills), ", ".join(
+    str(data2.ATTRIBUTES.index(data2.SKILLS[k][0])) for k in skills)))
+out.append("pub const RACE_SKILL: [[f64; %d]; 4] = [%s];" % (len(skills), ", ".join(
+    "[" + ", ".join(f(rs.get(k, 0)) for k in skills) + "]" for rs in data2.RACE_SKILL)))
+out.append("pub const CLASS_SKILLS: [&[usize]; %d] = [%s];" % (len(classes), ", ".join(
+    "&[" + ", ".join(str(skills.index(s)) for s in data2.CLASS_SKILLS.get(c, [])) + "]" for c in classes)))
+leg = list(data.LEGACY)
+strs("LEGACY_KINDS", leg)
+nums("LEGACY_LEVELS", data.LEGACY_LEVELS); nums("HOUSE_LEGACY_LEVELS", data.HOUSE_LEGACY_LEVELS)
+nums("LEVEL_CAP_T", [data.LEVEL_CAP, data.BLOOD_LEVEL_CAP])
+
+from realm_of_ages import characters as _ch, arcana as _ar  # noqa: E402
+strs("BORROWED", sorted(_ch.BORROWED)); strs("GIFTS", list(_ar.GIFTS)); nums("GIFT_CHANCE", [_ar.GIFT_CHANCE])
+out.append("pub const COLORS: [[u8; 3]; 4] = [%s];" % ", ".join("[%d, %d, %d]" % c for c in data.COLORS))
+strs("SUCCESSION", data.SUCCESSION)
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")
 print(f"wrote src/tables.rs ({len(out)} lines)")

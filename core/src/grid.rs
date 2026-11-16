@@ -98,7 +98,7 @@ pub fn label(a: &Grid<bool>) -> (Grid<i32>, usize) {
                 lab.set(r, c, n);
                 stack.push((r, c));
                 while let Some((y, x)) = stack.pop() {
-                    let mut push = |yy: usize, xx: usize, lab: &mut Grid<i32>, st: &mut Vec<(usize, usize)>| {
+                    let push = |yy: usize, xx: usize, lab: &mut Grid<i32>, st: &mut Vec<(usize, usize)>| {
                         if a.at(yy, xx) && lab.at(yy, xx) < 0 {
                             lab.set(yy, xx, n);
                             st.push((yy, xx));
