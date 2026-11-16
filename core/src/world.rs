@@ -53,7 +53,9 @@ impl World {
         let st = State { year: 0, rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
                          owner: Grid::new(h, w, -1), relation, log: vec![],
-                         climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0 };
+                         climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
+                         cultures: (0..4).map(|p| crate::people::Culture { people: p, innovations: Default::default() }).collect(),
+                         famines: vec![], migrants: 0.0, grain_moved: 0.0 };
         let mut world = World { st };
         world.st.place_resources();
         world.st.place_ruins();
@@ -124,6 +126,25 @@ impl World {
         for (i, s) in SKILLS.iter().enumerate() { sk.set_item(*s, c.skills[i])?; }
         d.set_item("skills", sk)?;
         Ok(d)
+    }
+
+    /// Run the world forward. (Slice 2: the land's year; the rest of the year arrives slice by slice.)
+    fn step(&mut self, years: i64) {
+        for _ in 0..years {
+            self.st.year += 1;
+            self.compute_territory();
+            self.st.weather_year();
+            self.st.land_year();
+            self.st.expand();
+        }
+    }
+
+    /// Totals for checking: (living towns, people, mean poverty, famine years so far, grain moved, migrants).
+    fn totals(&self) -> (usize, f64, f64, usize, f64, f64) {
+        let live: Vec<&crate::people::Town> = self.st.towns.iter().filter(|t| t.alive).collect();
+        let pop: f64 = live.iter().map(|t| t.pop).sum();
+        let pov = live.iter().map(|t| t.poverty * t.pop).sum::<f64>() / pop.max(1.0);
+        (live.len(), pop, pov, self.st.famines.len(), self.st.grain_moved, self.st.migrants)
     }
 
     /// Weather only, for checking the climate: runs `years` and returns (year, harvest, warmth, rain) means over land.

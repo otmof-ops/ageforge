@@ -26,6 +26,10 @@ pub struct State {
     pub log: Vec<(i64, bool, String)>, // (year, minor, text)
     pub climate: Climate,
     pub blight: i64,
+    pub cultures: Vec<crate::people::Culture>,
+    pub famines: Vec<(i64, usize, f64)>,
+    pub migrants: f64,
+    pub grain_moved: f64,
 }
 
 impl State {
@@ -116,7 +120,12 @@ impl State {
         }
         let id = self.towns.len();
         self.towns.push(Town { id, name, realm, culture: cu, pos, pop, wealth: 30.0, walls: capital as u32,
-                               alive: true, founded: self.year, capital, landmass: self.map.landmass.at(r, c), port });
+                               alive: true, founded: self.year, capital, landmass: self.map.landmass.at(r, c), port,
+                               cells: 0, magic: 0.0, soil: 1.0, granary: None, food: 0.0, food_prod: pop, famine: 0.0,
+                               hunger_dead: 0.0, lord_mod: 1.0, res_food: 0.0, res_wealth: 0.0, jobs: [0.0; 7],
+                               jobless: 0.0, farm_fill: 1.0, labour_short: 0.0, skill: None, arcane: 0.0,
+                               labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
+                               cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0 });
         id
     }
 
@@ -436,7 +445,8 @@ impl State {
             };
             self.realms.push(Realm { id: pid, people: f, name: String::new(), short: String::new(), rank: "tribe",
                 gov: "tribal", law: if f == 3 { "strongest" } else { "elective" }, color, ruler: NONE, house: NONE,
-                regnal: vec![], reigns: vec![], place: String::new(), extinct: false });
+                regnal: vec![], reigns: vec![], place: String::new(), extinct: false,
+                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0 });
             let pop = self.rng.integers(120, 260) as f64;
             let cap = self.add_town(pid, pos, pop, true);
             let place = self.towns[cap].name.clone();

@@ -83,6 +83,32 @@ pub struct Town {
     pub capital: bool,
     pub landmass: i32,
     pub port: bool,
+    // the land's year (economy and markets)
+    pub cells: usize,
+    pub magic: f64,
+    pub soil: f64,
+    pub granary: Option<f64>,
+    pub food: f64,
+    pub food_prod: f64,
+    pub famine: f64,
+    pub hunger_dead: f64,
+    pub lord_mod: f64,
+    pub res_food: f64,
+    pub res_wealth: f64,
+    pub jobs: [f64; 7],
+    pub jobless: f64,
+    pub farm_fill: f64,
+    pub labour_short: f64,
+    pub skill: Option<[f64; 7]>,
+    pub arcane: f64,
+    pub labour_value: f64,
+    pub income: f64,
+    pub housing: Option<f64>,
+    pub crowded: f64,
+    pub stock: [f64; 3],
+    pub cls: [(f64, f64, f64); 3],     // (people, income each, poor share) for lower, middle, upper
+    pub poverty: f64,
+    pub econ_mood: f64,
 }
 
 pub struct Realm {
@@ -100,6 +126,16 @@ pub struct Realm {
     pub reigns: Vec<(usize, i64, Option<i64>)>,
     pub place: String,
     pub extinct: bool,
+    pub growth_mult: f64,
+    pub tax_now: f64,
+    pub gold: f64,
+    pub crown_law: u32,
+    pub tax_relief: i64,
+}
+
+pub struct Culture {
+    pub people: usize,
+    pub innovations: std::collections::HashSet<&'static str>,
 }
 
 pub struct Ruin {

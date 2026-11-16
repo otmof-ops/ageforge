@@ -35,7 +35,7 @@ A slice is done when its numbers sit inside the Python engine's own seed-to-seed
 |---|---|---|---|
 | 0 | Foundation: PCG64, territory | world (part) | done |
 | 1 | Tables and world generation: map, landmasses, resources, first tribes and towns | data, data2, geography, resources, world (init) | done. 8 seeds: map, resources, ruins, 32 tribes with capitals, rulers, kin, houses, bloodlines, territory all inside Python's spread; 5x faster. Clans and bending tribes (about 30 more people at the start) come with slice 6 |
-| 2 | The land's year: climate, harvest, grain, soil, births and deaths of towns, labour, classes, money, trade | climate, economy, markets, populace (part) | |
+| 2 | The land's year: climate, harvest, grain, soil, births and deaths of towns, labour, classes, money, trade | climate, economy, markets, populace (part) | climate done (64 runs: harvest, warmth, bad years within 1 se). Harvest, grain, eating, famine, migration, labour, classes, tax rate and new towns run in `World.step`: 200 years in 0.3 s (Python's full year: 35 s); towns and people within 5-20% of the full Python world; poverty 0.21 vs 0.11 at year 50, pending trade and money. Next: trade_year, money_year |
 | 3 | People: characters, skills, classes, levels, legacies, lineage, the heart, youth, mortality, births | characters, skills, lineage, heart, youth, court (part) | |
 | 4 | Realms: dynasties, succession, partition, councils, titles, factions, governance, civics, statecraft, war | dynasty, titles, governance, civics, statecraft, warfare, opinion | |
 | 5 | Society: crafts, guilds, crime, faith, stewardship, the Wardens' Hall, bounties | crafts, society, stewardship, guild, bounties | |
