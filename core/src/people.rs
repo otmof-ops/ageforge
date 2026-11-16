@@ -42,12 +42,31 @@ pub struct Character {
     pub gift: Option<usize>,
     pub religion: usize,
     pub hero: bool,
+    pub undead: bool,
+    pub built: u32,
+    pub disgraced_until: i64,
+    pub titles: Vec<String>,
+    pub memories: Vec<(usize, &'static str, f64, f64, i64)>, // (about whom, why, value, decay, year), for opinion
     pub alive: bool,
     pub died: Option<i64>,
     pub gold: f64,
 }
 
 impl Character {
+    pub fn age(&self, year: i64) -> i64 { year - self.born }
+    pub fn adult(&self, year: i64) -> bool { self.age(year) >= ADULT[self.people] as i64 }
+
+    /// A base stat as used (Character.attr): trained value, a point per fifteen levels, less the toll of age.
+    /// Legacy, education, perks and class effects join here with slices 3 and 4.
+    pub fn attr(&self, a: usize, year: i64) -> f64 {
+        let mut v = self.attrs[a] + (self.level / 15) as f64;
+        if a != 4 && a != 5 && !self.undead {
+            let frac = self.age(year) as f64 / self.life.max(1.0);
+            v -= ((frac - 0.66) * 25.0).max(0.0).floor();
+        }
+        v
+    }
+
     pub fn has(&self, g: usize) -> bool {
         self.genetic.contains(&g)
     }
@@ -109,6 +128,13 @@ pub struct Town {
     pub cls: [(f64, f64, f64); 3],     // (people, income each, poor share) for lower, middle, upper
     pub poverty: f64,
     pub econ_mood: f64,
+    pub bld: [u8; 8],                 // levels of BUILDINGS (stewardship)
+    pub relief: i64,
+    pub coin: Option<f64>,
+    pub garrison: f64,
+    pub trade_gain: f64,
+    pub real_income: f64,
+    pub bullion: f64,
 }
 
 pub struct Realm {
@@ -131,6 +157,29 @@ pub struct Realm {
     pub gold: f64,
     pub crown_law: u32,
     pub tax_relief: i64,
+    pub council: [usize; 6],          // marshal steward spymaster mage loremaster admiral
+    pub council_for: usize,
+    pub econ_distress: f64,
+    pub corruption: f64,
+    pub collect: f64,
+    pub tax_mult: f64,
+    pub levy: f64,
+    pub income: f64,
+    pub real_gdp: f64,
+    pub credit: Option<f64>,
+    pub defaults: u32,
+    pub rate: f64,
+    pub money: f64,
+    pub trade_val: f64,
+    pub trade_net: f64,
+    pub partners: u32,
+    pub trade_protectionist: bool,
+    pub last_forced: i64,
+    pub last_default: i64,
+    pub mint_skill: f64,
+    pub sector_boost: [f64; 7],
+    pub econ_prev_gdp: Option<f64>,
+    pub goods: Vec<usize>,            // luxury and strategic resources held
 }
 
 pub struct Culture {

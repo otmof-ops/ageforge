@@ -47,12 +47,14 @@ impl World {
         let mut rng = Pcg64::from_state(state, inc);
         let map = make_world(height, width, &mut rng, 0.33);
         let (h, w) = (height, width);
-        let mut relation = [[0.0; 4]; 4];
+        // as world.Realm: the four first rows take the peoples' table (indexed by realm id, see PORT.md "Python bugs")
+        let mut relation = vec![vec![0.0; 4]; 4];
         for i in 0..4 { for j in 0..4 { relation[i][j] = BASE_REL[i][j] + rng.normal(0.0, 8.0); } }
         for i in 0..4 { for j in 0..i { let m = (relation[i][j] + relation[j][i]) / 2.0; relation[i][j] = m; relation[j][i] = m; } }
         let st = State { year: 0, rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
-                         owner: Grid::new(h, w, -1), relation, log: vec![],
+                         owner: Grid::new(h, w, -1), relation, stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
+                         bankruptcies: vec![], log: vec![],
                          climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
                          cultures: (0..4).map(|p| crate::people::Culture { people: p, innovations: Default::default() }).collect(),
                          famines: vec![], migrants: 0.0, grain_moved: 0.0 };
@@ -61,6 +63,7 @@ impl World {
         world.st.place_ruins();
         world.st.place_capitals(8);
         world.compute_territory();
+        world.st.grow_tables();
         world.st.climate = crate::climate::Climate::setup(&world.st.map.terrain, &mut world.st.rng);
         world
     }
@@ -134,8 +137,14 @@ impl World {
             self.st.year += 1;
             self.compute_territory();
             self.st.weather_year();
+            self.st.realm_resources();
             self.st.land_year();
             self.st.expand();
+            self.st.councils();
+            self.st.treasury_year();
+            self.st.trade_year();
+            self.st.money_year();
+            self.st.manage_year();
         }
     }
 

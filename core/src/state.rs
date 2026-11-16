@@ -22,7 +22,11 @@ pub struct State {
     pub used_names: HashSet<String>,
     pub blocked: Grid<bool>,
     pub owner: Grid<i64>,
-    pub relation: [[f64; 4]; 4],
+    pub relation: Vec<Vec<f64>>,     // between realms (grown as realms appear)
+    pub stats_defaults: Vec<(i64, usize)>,
+    pub stats_forced: Vec<(i64, usize)>,
+    pub mined: f64,
+    pub bankruptcies: Vec<(i64, usize)>,
     pub log: Vec<(i64, bool, String)>, // (year, minor, text)
     pub climate: Climate,
     pub blight: i64,
@@ -125,7 +129,8 @@ impl State {
                                hunger_dead: 0.0, lord_mod: 1.0, res_food: 0.0, res_wealth: 0.0, jobs: [0.0; 7],
                                jobless: 0.0, farm_fill: 1.0, labour_short: 0.0, skill: None, arcane: 0.0,
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
-                               cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0 });
+                               cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
+                               coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0 });
         id
     }
 
@@ -250,7 +255,8 @@ impl State {
             id, name, people, realm, female, born, house, father, mother, spouse: NONE, children: vec![],
             genetic, latent, personality, attrs, prowess, talent, life, classes: vec![(cls, 1)], level: 1, xp: 0.0,
             hp: 100.0, renown: 0.0, branch: vec![], capstones: vec![], attributes, skills, legacy, legitimacy: None,
-            tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, alive: true, died: None,
+            tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, undead: false, built: 0,
+            disgraced_until: 0, titles: vec![], memories: vec![], alive: true, died: None,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -446,7 +452,11 @@ impl State {
             self.realms.push(Realm { id: pid, people: f, name: String::new(), short: String::new(), rank: "tribe",
                 gov: "tribal", law: if f == 3 { "strongest" } else { "elective" }, color, ruler: NONE, house: NONE,
                 regnal: vec![], reigns: vec![], place: String::new(), extinct: false,
-                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0 });
+                growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0, council: [NONE; 6],
+                council_for: NONE, econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0,
+                income: 0.0, real_gdp: 0.0, credit: None, defaults: 0, rate: 0.0, money: 0.0, trade_val: 0.0,
+                trade_net: 0.0, partners: 0, trade_protectionist: false, last_forced: -99, last_default: -99,
+                mint_skill: 0.0, sector_boost: [0.0; 7], econ_prev_gdp: None, goods: vec![] });
             let pop = self.rng.integers(120, 260) as f64;
             let cap = self.add_town(pid, pos, pop, true);
             let place = self.towns[cap].name.clone();

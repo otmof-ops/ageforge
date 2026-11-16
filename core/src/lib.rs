@@ -13,6 +13,7 @@ mod geography;
 mod grid;
 mod people;
 mod state;
+mod stewardship;
 mod rng;
 mod tables;
 mod world;

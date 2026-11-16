@@ -89,6 +89,7 @@ impl State {
             s.magic = MAGIC[s.culture] * (mana[i] / 5.0).min(1.0) * (1.0 + 0.1 * realm_tier);
             let rf = (0.05 * res[i].iter().filter(|x| RESOURCES[x.0].effect == "food").map(|x| x.1 as f64).sum::<f64>()).min(0.4);
             s.res_food = rf;
+            s.bullion = res[i].iter().map(|x| x.1 as f64 * match RESOURCES[x.0].name { "gold" => 0.6, "silver" => 0.25, _ => 0.0 }).sum();
             s.res_wealth = 1.5 * res[i].iter().filter(|x| matches!(RESOURCES[x.0].effect, "wealth" | "treasury")).map(|x| x.1 as f64).sum::<f64>();
             let tech = 1.0;
             let magic = 1.0 + 0.15 * s.magic + 0.01 * realm_tier;
@@ -222,19 +223,24 @@ impl State {
             let mins: f64 = res[i].iter().filter(|x| MINERAL.contains(&RESOURCES[x.0].name)).map(|x| x.1 as f64).sum();
             let gov = self.realms[k].gov;
             let tax = self.realms[k].tax_now;
+            let boost = self.realms[k].sector_boost;
+            let year = self.year;
             let s = &mut self.towns[i];
             let working = WORKING * s.pop;
-            let soldiers = 0.0f64.min(working * 0.08);
+            let soldiers = (working * 0.08).min(0.25 * s.garrison);
+            let b = s.bld;
+            let bl = |i: usize| b[i] as f64;
             let free = working - soldiers;
             let culture = s.culture;
+            use crate::stewardship::*;
             let jobs = [
-                0.78 * WORKING * s.pop * (s.food_prod / s.pop.max(1.0)).clamp(0.9, 1.05) * (1.0 - saving),
-                25.0 * mins,
-                s.pop * (0.03 + 0.04 * guild + 0.02 * (st >= 1.0) as u8 as f64) + 25.0 * mats,
-                40.0 * s.port as u8 as f64 * sea + 0.02 * s.pop * st,
+                0.78 * WORKING * s.pop * (s.food_prod / s.pop.max(1.0)).clamp(0.9, 1.05) * (1.0 - saving) * (1.0 - 0.02 * bl(B_MILL)),
+                25.0 * mins + if mins > 0.0 { 30.0 * bl(B_MINE) } else { 0.0 },
+                s.pop * (0.03 + 0.04 * guild + 0.02 * (st >= 1.0) as u8 as f64 + 0.015 * bl(B_WORKSHOPS)) + 25.0 * mats,
+                40.0 * s.port as u8 as f64 * sea + 0.02 * s.pop * st + 0.01 * s.pop * bl(B_MARKET) + 40.0 * bl(B_HARBOUR),
                 0.035 * s.pop,
                 s.pop * 0.05 * st,
-                s.pop * 0.004 * MAGIC[culture] * (1.0 + s.magic.min(2.0)),
+                s.pop * 0.004 * MAGIC[culture] * (1.0 + s.magic.min(2.0)) * (1.0 + 0.5 * bl(B_COLLEGE)),
             ];
             let demand: f64 = jobs.iter().sum();
             let (filled, idle, short) = if demand <= free {
@@ -252,20 +258,25 @@ impl State {
             s.farm_fill = filled[0] / jobs[0].max(1.0);
             s.labour_short = short;
             let mut sk = s.skill.unwrap_or(PEOPLE_SKILL[culture]);
+            // (masters teaching their trade join with slice 5; innovations' skill with slice 4)
+            let bld_of = [B_MILL, B_MINE, B_WORKSHOPS, B_MARKET, usize::MAX, usize::MAX, B_COLLEGE];
             for j in 0..7 {
-                let target = PEOPLE_SKILL[culture][j].min(1.0);
+                let own = if bld_of[j] == usize::MAX { 0.0 } else { bl(bld_of[j]) };
+                let target = (PEOPLE_SKILL[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j]).min(1.0);
                 sk[j] += 0.06 * (target - sk[j]);
             }
             s.skill = Some(sk);
             let harvest = s.food_prod / s.pop.max(1.0);
             let arc = filled[6] / s.pop.max(1.0) * (0.6 + 0.8 * sk[6]);
             s.arcane = arc;
-            let mult = [(0.5 + 0.5 * harvest).min(1.6), 1.0, 1.0 + (25.0 * arc).min(0.2), 1.0, 1.0, 1.0, 1.0];
+            let mult = [(0.5 + 0.5 * harvest).min(1.6) * (1.0 + 0.08 * bl(B_MILL)), 1.0 + 0.12 * bl(B_MINE),
+                        1.0 + (25.0 * arc).min(0.2), 1.0 + 0.08 * bl(B_MARKET), 1.0, 1.0, 1.0];
             let mut val = [0.0; 7];
             for j in 0..7 { val[j] = filled[j] * VALUE[j] * mult[j] * (0.6 + 0.8 * sk[j]) * UNIT; }
             let value = val.iter().sum::<f64>() / UNIT + idle * IDLE_VALUE;
             s.labour_value = value * UNIT;
-            let real = value * UNIT + 0.3 * terr_wealth[i];
+            let real = value * UNIT + 0.3 * terr_wealth[i] + s.trade_gain;
+            s.real_income = real;
             s.income = real;
             s.wealth = s.wealth * 0.96 + real;
             let walls_cap = 1;
@@ -295,7 +306,8 @@ impl State {
             let crowd = (s.pop / housing.max(1.0) - 1.0).max(0.0);
             s.crowded = crowd;
             let food = (s.food_prod / s.pop.max(1.0)).clamp(0.5, 1.3);
-            let line = SUBSIST * food.powf(-0.7) * (1.0 + 0.6 * crowd);
+            let mut line = SUBSIST * food.powf(-0.7) * (1.0 + 0.6 * crowd);
+            if s.relief > year { line *= 0.9; }
             let mut poverty = 0.0;
             for c in 0..3 {
                 let people = heads[c] / th * s.pop;
