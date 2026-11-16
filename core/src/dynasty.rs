@@ -307,6 +307,9 @@ impl State {
         // (assassins sent by realms at war join with warfare, slice 4)
     }
 
+    pub fn claim_of(&mut self, c: usize) -> f64 { self.claim_score(c) }
+    pub fn pool_of(&self, k: usize) -> Vec<usize> { self.pool(k) }
+
     fn claim_score(&mut self, c: usize) -> f64 {
         let y = self.year;
         let cc = &self.chars[c];
@@ -454,7 +457,7 @@ impl State {
             reason = "after a war for the throne".into();
         }
         self.crown(k, heir, &reason);
-        // (tribal and clan partition of the lands comes with titles, slice 4)
+        if old != NONE { self.partition(k, old, heir); }
     }
 
     fn civil_war(&mut self, k: usize, a: usize, b: usize) -> usize {

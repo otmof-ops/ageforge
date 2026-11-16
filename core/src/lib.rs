@@ -18,6 +18,7 @@ mod populace;
 mod power;
 mod state;
 mod stewardship;
+mod titles;
 mod rng;
 mod tables;
 mod world;

@@ -23,6 +23,11 @@ pub struct State {
     pub blocked: Grid<bool>,
     pub owner: Grid<i64>,
     pub relation: Vec<Vec<f64>>,     // between realms (grown as realms appear)
+    pub war: Vec<Vec<bool>>,
+    pub truce: Vec<Vec<i64>>,
+    pub duchies: std::collections::BTreeMap<DKey, Duchy>,
+    pub ktitles: std::collections::BTreeMap<DKey, KTitle>,
+    pub breakaways: Vec<(i64, usize, usize, usize)>,
     pub stats_defaults: Vec<(i64, usize)>,
     pub stats_forced: Vec<(i64, usize)>,
     pub mined: f64,
@@ -135,7 +140,7 @@ impl State {
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
                                cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
                                coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0, burghers: 0.08,
-                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1 });
+                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None });
         id
     }
 
@@ -262,7 +267,7 @@ impl State {
             hp: 100.0, renown: 0.0, branch: vec![], capstones: vec![], attributes, skills, legacy, legitimacy: None,
             tyranny: 0.0, regnal: None, ruled: None, gift: None, religion, hero: false, undead: false, built: 0,
             disgraced_until: 0, titles: vec![], memories: vec![], deeds: vec![], perks: vec![], skill_progress: [0.0; 8],
-            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, relations: vec![], rival_ruler: NONE, hooks: vec![], alive: true, died: None, cause: None, home: NONE,
+            battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, duchies: vec![], op_bias: None, lordships: vec![], happy: 0.0, relations: vec![], rival_ruler: NONE, hooks: vec![], alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -375,6 +380,12 @@ impl State {
 
     /// dynasty.crown for a realm's first ruler; successions come with slice 4.
     pub fn crown(&mut self, k: usize, cid: usize, reason: &str) {
+        if let Some((held, _, None)) = self.chars[cid].ruled {
+            if held != k && !self.realms[held].extinct {
+                self.unite_crowns(held, k, cid, reason);
+                return;
+            }
+        }
         let new_dyn = self.chars[cid].house == NONE || self.chars[cid].house != self.realms[k].house;
         let old = self.realms[k].ruler;
         let old_house = if old != NONE { self.chars[old].house } else if !self.realms[k].reigns.is_empty() { self.chars[self.realms[k].reigns.last().unwrap().id].house } else { NONE };
@@ -495,7 +506,8 @@ impl State {
                 gov: "tribal", law: if f == 3 { "strongest" } else { "elective" }, color, ruler: NONE, house: NONE,
                 regnal: vec![], reigns: vec![], place: String::new(), extinct: false,
                 growth_mult: 1.0, tax_now: 0.06, gold: 50.0, crown_law: 1, tax_relief: 0, regent: NONE, taken: 0, lost: 0,
-                civil_wars: 0, physician: false, council: [NONE; 6],
+                civil_wars: 0, physician: false, parent: NONE, founded_year: 0, ended: None, battle_mult: 1.0, warships: 4.0,
+                ship_tier: 0, allies: vec![], factions: vec![], faction_since: vec![], ultimatum_cooldown: vec![], council: [NONE; 6],
                 council_for: NONE, econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0,
                 income: 0.0, real_gdp: 0.0, credit: None, defaults: 0, rate: 0.0, money: 0.0, trade_val: 0.0,
                 trade_net: 0.0, partners: 0, trade_protectionist: false, last_forced: -99, last_default: -99,

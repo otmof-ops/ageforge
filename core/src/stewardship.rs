@@ -43,6 +43,10 @@ impl State {
         let n = self.realms.len();
         for row in self.relation.iter_mut() { row.resize(n, 0.0); }
         while self.relation.len() < n { self.relation.push(vec![0.0; n]); }
+        for row in self.war.iter_mut() { row.resize(n, false); }
+        while self.war.len() < n { self.war.push(vec![false; n]); }
+        for row in self.truce.iter_mut() { row.resize(n, 0); }
+        while self.truce.len() < n { self.truce.push(vec![0; n]); }
     }
 
     /// Which luxury and strategic deposits each realm holds this year (resources.realm_resources).

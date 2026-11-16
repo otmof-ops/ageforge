@@ -53,7 +53,8 @@ impl World {
         for i in 0..4 { for j in 0..i { let m = (relation[i][j] + relation[j][i]) / 2.0; relation[i][j] = m; relation[j][i] = m; } }
         let st = State { year: 0, rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
-                         owner: Grid::new(h, w, -1), relation, stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
+                         owner: Grid::new(h, w, -1), relation, war: vec![], truce: vec![], duchies: Default::default(),
+                         ktitles: Default::default(), breakaways: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
                          bankruptcies: vec![], risings: vec![], epidemics: vec![], last_pandemic: -999, last_plague: -999, log: vec![],
                          climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
                          cultures: (0..4).map(|p| crate::people::Culture { people: p, innovations: Default::default() }).collect(),
@@ -144,6 +145,7 @@ impl World {
             self.st.land_year();
             self.st.expand();
             self.st.dynasty_year();
+            self.st.titles_year();
             self.st.opinion_year();
             self.st.treasury_year();
             self.st.trade_year();

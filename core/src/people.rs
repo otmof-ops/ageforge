@@ -56,6 +56,10 @@ pub struct Character {
     pub concord: bool,
     pub health: f64,
     pub epithet: Option<String>,
+    pub duchies: Vec<DKey>,
+    pub op_bias: Option<f64>,
+    pub lordships: Vec<usize>,
+    pub happy: f64,
     pub relations: Vec<(usize, bool)>,     // (whom, friend: true / rival: false)
     pub rival_ruler: usize,
     pub hooks: Vec<(usize, &'static str)>,
@@ -165,6 +169,7 @@ pub struct Town {
     pub immune: f64,
     pub sick_now: f64,
     pub crime: f64,
+    pub duchy: Option<DKey>,
 }
 
 pub struct Epidemic {
@@ -204,6 +209,16 @@ pub struct Realm {
     pub lost: u32,
     pub civil_wars: u32,
     pub physician: bool,
+    pub parent: usize,
+    pub founded_year: i64,
+    pub ended: Option<i64>,
+    pub battle_mult: f64,
+    pub warships: f64,
+    pub ship_tier: u32,
+    pub allies: Vec<usize>,
+    pub factions: Vec<(&'static str, i32, Vec<usize>, usize, f64)>,   // (kind, land, members, leader, power)
+    pub faction_since: Vec<((&'static str, i32), i64)>,
+    pub ultimatum_cooldown: Vec<(&'static str, i64)>,
     pub council: [usize; 6],          // marshal steward spymaster mage loremaster admiral
     pub council_for: usize,
     pub econ_distress: f64,
@@ -232,6 +247,23 @@ pub struct Realm {
 pub struct Culture {
     pub people: usize,
     pub innovations: std::collections::HashSet<&'static str>,
+}
+
+/// A duchy's key: (landmass, row / 24, column / 24); a kingdom title's: the same at 72.
+pub type DKey = (i32, i32, i32);
+
+pub struct Duchy {
+    pub name: String,
+    pub holder: usize,
+    pub kt: DKey,
+    pub since: i64,
+    pub land: i32,
+    pub ctrl: usize,
+}
+
+pub struct KTitle {
+    pub name: String,
+    pub ctrl: usize,
 }
 
 pub struct Reign {
