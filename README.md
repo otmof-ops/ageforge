@@ -99,3 +99,10 @@ forced loans, the share of people on the land, poverty, the classes, and how wea
 `seafaring` are the politics and war; `markets`, `stewardship`, `economy`, `climate`, `populace` and `resources`
 are the economy and the land; `arcana`, `skills`, `crafts`, `heroes`, `shinobi`, `bending`, `beasts`, `monsters`,
 `ecology`, `dungeons` and `legends` are the fantastic; `session`, `godmode`, `events` and `tui` are the game.
+
+## License
+
+BSD 3-Clause, the standard permissive license with a non-endorsement clause. In plain words: use, copy, change and
+sell Ageforge freely; every copy, source or binary, keeps the copyright line, which names **Jay** and links to
+https://github.com/otmof-ops/ageforge; and Jay's name may not be used to endorse a derivative without permission.
+Full text in [LICENSE](LICENSE).
