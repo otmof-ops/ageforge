@@ -58,6 +58,10 @@ impl State {
     pub fn new_item(&mut self, it: Item) -> usize { self.items.push(it); self.items.len() - 1 }
 
     pub fn give_item(&mut self, c: usize, it: usize, quiet: bool) {
+        if self.chars[c].items.contains(&it) { return; }
+        // an item handed on outright is no longer kept in trust for anyone
+        self.items[it].held_for = NONE;
+        self.items[it].keeper = NONE;
         if self.items[it].rarity >= 3 { let lb = self.items[it].label(); self.life(c, "heroes", format!("Comes to bear {lb}.")); }
         self.chars[c].items.push(it);
         self.items[it].bearers.push(c);
@@ -265,7 +269,10 @@ impl State {
 
     /// Items go to the heir, or into the treasury (governance.inherit; a monster's hoard joins with slice 6).
     pub fn inherit(&mut self, c: usize, killer_hoard: Option<usize>) {
-        let items = std::mem::take(&mut self.chars[c].items);
+        let mut items = std::mem::take(&mut self.chars[c].items);
+        // one item, one entry: a second entry would be handed on twice
+        let mut seen = std::collections::HashSet::new();
+        items.retain(|&i| seen.insert(i));
         if items.is_empty() { return; }
         let best = *items.iter().max_by_key(|&&i| self.items[i].rarity).unwrap();
         if let Some(m) = killer_hoard {
@@ -280,10 +287,11 @@ impl State {
         for &i in &items { self.items[i].held_for = NONE; self.items[i].keeper = NONE; }
         for it in kept {
             let kid = self.items[it].held_for;
+            if kid == NONE || kid >= self.chars.len() || !self.chars[kid].alive { self.items[it].held_for = NONE; self.items[it].keeper = NONE; if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); } continue; }
             if self.chars[kid].adult(self.year) { self.items[it].held_for = NONE; self.items[it].keeper = NONE; self.give_item(kid, it, true); continue; }
             let g = self.guardian_of(kid, c);
             self.items[it].keeper = g;
-            if g != NONE { self.chars[g].items.push(it); } else if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); }
+            if g != NONE { if !self.chars[g].items.contains(&it) { self.chars[g].items.push(it); } } else if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); }
         }
         if items.is_empty() { return; }
         let best = *items.iter().max_by_key(|&&i| self.items[i].rarity).unwrap();
@@ -293,8 +301,8 @@ impl State {
             for &it in &items {
                 self.items[it].held_for = heir;
                 self.items[it].keeper = g;
-                self.chars[heir].in_trust.push(it);
-                if g != NONE { self.chars[g].items.push(it); } else if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); }
+                if !self.chars[heir].in_trust.contains(&it) { self.chars[heir].in_trust.push(it); }
+                if g != NONE { if !self.chars[g].items.contains(&it) { self.chars[g].items.push(it); } } else if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); }
             }
             if self.items[best].rarity >= 4 {
                 let kn = if g != NONE { self.who(g) } else { "the crown".into() };
