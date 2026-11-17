@@ -270,7 +270,7 @@ impl State {
         0.0
     }
 
-    fn shift(&mut self, t: usize, rid: usize, amount: f64) {
+    pub fn shift(&mut self, t: usize, rid: usize, amount: f64) {
         let f = &mut self.towns[t].faith;
         match f.iter_mut().find(|x| x.0 == rid) { Some(x) => x.1 += amount, None => f.push((rid, amount)) }
         let tot: f64 = f.iter().map(|x| x.1).sum();
@@ -368,6 +368,7 @@ impl State {
                                        peak: 0.0, followers: 0.0, dead: false });
         self.chars[c].religion = id;
         self.shift(home, id, 0.3);
+        self.write_scripture(c, id, home);
         if self.chars[c].profession.is_none() { self.chars[c].profession = Some("priest"); }
         let t = format!("**A new faith.** {} proclaims {name} in {}, breaking from {}. Its teachings: {teach}.", self.who(c), self.towns[home].name, self.religions[parent].name);
         self.say(t, false);

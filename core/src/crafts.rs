@@ -11,7 +11,7 @@ const SKILL_LEGACY: [(&str, &str); 19] = [("Smithing", "smith"), ("Enchanting", 
     ("Speech", "prophet"), ("Sneak", "thief"), ("Security", "thief"), ("Pickpocket", "thief"), ("Blade", "warrior"), ("Blunt", "warrior"),
     ("Archery", "warrior"), ("Block", "guardian"), ("Heavy Armor", "guardian"), ("Light Armor", "warrior"), ("Destruction", "arcane"),
     ("Restoration", "arcane"), ("Conjuration", "arcane"), ("Illusion", "arcane"), ("Alteration", "arcane")];
-const FAME_WORD: [(&str, &str); 13] = [("artist", "artist"), ("Smithing", "smith"), ("Enchanting", "enchanter"), ("Alchemy", "alchemist"), ("Mercantile", "merchant"),
+const FAME_WORD: [(&str, &str); 14] = [("artist", "artist"), ("scholar", "scholar"), ("Smithing", "smith"), ("Enchanting", "enchanter"), ("Alchemy", "alchemist"), ("Mercantile", "merchant"),
     ("Speech", "speaker"), ("Sneak", "thief"), ("Security", "thief"), ("Pickpocket", "thief"), ("assassin", "assassin"),
     ("shinobi", "shinobi"), ("bender", "bender"), ("prophet", "prophet")];
 const GREATEST_AT: f64 = 5000.0;

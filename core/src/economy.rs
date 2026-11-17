@@ -97,6 +97,7 @@ impl State {
         for c in self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.hero) { if c.items.iter().any(|&i| self.items[i].special == Some("food")) && c.realm < seed.len() { seed[c.realm] = 1.2; } }
         let god: Vec<Option<f64>> = (0..self.realms.len()).map(|k| self.god_harvest.iter().find(|g| g.0 == k && g.2 >= y).map(|g| g.1)).collect();
         let tiers: Vec<f64> = self.realms.iter().map(|k| k.realm_tier as f64).collect();
+        let learning = self.learning_in();
         // grains reaped for each grain sown: about three in tribal fields, four to five once fields are rotated
         let yield_ratio: Vec<f64> = self.cultures.iter().map(|c| 3.0 + 0.6 * c.innovations.contains("Two-Field Rotation") as u8 as f64
             + 1.0 * c.innovations.contains("Three-Field Rotation") as u8 as f64).collect();
@@ -124,7 +125,9 @@ impl State {
             prod *= 0.55 + 0.45 * s.farm_fill.min(1.0);
             // not all of a harvest is eaten: next year's seed goes back into the ground, the plough-oxen and the
             // herds eat their share, and rats, mould and weather take more in the field and the barn
-            prod *= (1.0 - 1.0 / yield_ratio[s.culture]) * 0.85;
+            // agronomy raises the yield; astronomy's calendar times the sowing (works.rs)
+            let lr = learning[i];
+            prod *= (1.0 - 1.0 / (yield_ratio[s.culture] + 0.3 * lr[1])) * 0.85 * (1.0 + 0.02 * lr[2]);
             s.food_prod = prod;
             s.food = prod;
         }
@@ -186,6 +189,8 @@ impl State {
             d *= 1.0 + 1.0 * crowd;
             // a lean diet kills slowly, long before outright famine: the weak, the old and the infants first
             d *= 1.0 + 0.8 * (0.95 - ratio).clamp(0.0, 0.5);
+            // physicians who have read the canon of healing save some (works.rs)
+            d *= 1.0 - 0.04 * learning[i][0];
             s.pop += s.pop * (b - d) * growth * s.lord_mod;
             s.hunger_dead = 0.0;
             if short > 0.0 {
@@ -265,6 +270,7 @@ impl State {
         // books teach too: a treatise kept in a town lifts the trade it is about (works.rs)
         let treatises = self.treatises_in();
         // what houses are built of: a realm with timber or stone builds fast, one without builds slow and dear
+        let learning = self.learning_in();
         let materials: Vec<f64> = self.realms.iter().map(|k| if k.held.iter().any(|&r| matches!(RESOURCES[r].name, "timber" | "stone" | "ancient wood")) { 1.0 } else { 0.6 }).collect();
         let mut town_gifts: Vec<Vec<&'static str>> = vec![vec![]; n];
         let sector = |p: &str| match p { "smith" | "enchanter" | "alchemist" | "shipwright" => 2, "merchant" | "captain" => 3, "priest" => 4, "thief" | "assassin" | "bandit" => 5, _ => 6 };
@@ -395,7 +401,7 @@ impl State {
             if gap > 0.0 {
                 let means = (s.wealth / (0.5 * s.pop).max(1.0)).clamp(0.0, 1.5);
                 let builders = filled[2] / s.pop.max(1.0);
-                let rate = (0.004 + 0.02 * means + 0.15 * builders.min(0.15)) * materials[s.realm.min(materials.len() - 1)];
+                let rate = (0.004 + 0.02 * means + 0.15 * builders.min(0.15)) * materials[s.realm.min(materials.len() - 1)] * (1.0 + 0.15 * learning[i][3]);
                 let built = gap.min(housing * rate).max(0.0);
                 housing += built;
                 s.wealth -= built * 0.04;

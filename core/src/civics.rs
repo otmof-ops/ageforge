@@ -35,6 +35,8 @@ impl State {
             pts[pe] += p;
             if lead[pe] == NONE || n > self.alive_towns_of(lead[pe]).len() { lead[pe] = k; }
         }
+        // what a people's natural philosophy has worked out feeds its learning (works.rs)
+        for (pe, p) in pts.iter_mut().enumerate() { *p += self.science_points(pe); }
         let eras: Vec<usize> = self.cultures.iter().map(|c| c.era).collect();
         for ci in 0..4 {
             let cu = &self.cultures[ci];
