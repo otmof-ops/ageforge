@@ -136,7 +136,7 @@ impl State {
                     }
                 }
                 if dead > 50.0 && self.rng.random() < 0.3 {
-                    let here: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == realm && c.home == tid && !c.undead).map(|c| c.id).collect();
+                    let here: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == realm && c.home == tid && !c.undead).map(|c| c.id).collect();
                     let name = self.epidemics[e].name.clone();
                     for c in here { if self.rng.random() < attack * fat * 0.4 { self.kill(c, format!("died of {name}")); } }
                 }

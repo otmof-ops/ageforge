@@ -73,7 +73,7 @@ impl State {
             let seat = self.capital_of(k);
             let sd = if seat != NONE { self.towns[seat].duchy } else { None };
             let vacant: Vec<DKey> = mine.into_iter().filter(|dk| self.duchies[dk].holder == NONE && Some(*dk) != sd).collect();
-            let mut cands: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.adult(y) && c.id != r && !c.undead && c.duchies.is_empty()).map(|c| c.id).collect();
+            let mut cands: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.adult(y) && c.id != r && !c.undead && c.duchies.is_empty()).map(|c| c.id).collect();
             for dk in vacant {
                 if cands.is_empty() { break; }
                 let i = (0..cands.len()).max_by(|&a, &b| {
@@ -194,7 +194,7 @@ impl State {
         let y = self.year;
         let rh = self.chars[r].house;
         if ro.house != NONE && rh != NONE && self.chars[r].has_trait("ambitious") {
-            if let Some(kin) = self.chars.iter().find(|c| c.alive && c.house == rh && c.adult(y) && c.spouse != NONE && self.chars[c.spouse].house == ro.house && c.id != r) {
+            if let Some(kin) = self.living.iter().map(|&i| &self.chars[i]).find(|c| c.alive && c.house == rh && c.adult(y) && c.spouse != NONE && self.chars[c.spouse].house == ro.house && c.id != r) {
                 return Some(("claim".into(), None, false, kin.id));
             }
         }
@@ -950,7 +950,7 @@ impl State {
                 let same: Vec<usize> = alive.iter().copied().filter(|&k| self.realms[k].people == p).collect();
                 let pool = if same.is_empty() { &alive } else { &same };
                 let dest = pool.iter().copied().max_by_key(|&k| self.alive_towns_of(k).len()).unwrap_or(0);
-                for c in 0..self.chars.len() {
+                for c in self.living.clone() {
                     if self.chars[c].alive && self.chars[c].realm == f {
                         let home = self.chars[c].home;
                         self.chars[c].realm = if home != NONE && self.towns[home].alive { self.towns[home].realm } else { dest };

@@ -114,7 +114,7 @@ impl State {
         for cl in 0..self.clans.len() {
             let alive: Vec<usize> = self.clans[cl].members.iter().copied().filter(|&m| self.chars[m].alive).collect();
             self.clans[cl].members = alive;
-            let kids: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.clan == NONE && c.age(y) >= 8 && !c.hero && c.ruled.is_none() && c.profession.is_none()
+            let kids: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.clan == NONE && c.age(y) >= 8 && !c.hero && c.ruled.is_none() && c.profession.is_none()
                 && [c.father, c.mother].iter().any(|&p| p != NONE && self.chars[p].clan == cl)).map(|c| c.id).collect();
             for k in kids { if self.clans[cl].members.len() < CLAN_CAP { let ps: Vec<usize> = vec![]; self.initiate(cl, k, false, &ps); } }
             for m in self.clans[cl].members.clone() {
@@ -239,7 +239,7 @@ impl State {
                 let wars: Vec<(usize, usize)> = (0..n).flat_map(|i| (0..n).map(move |j| (i, j))).filter(|&(i, j)| i != j && self.war[i][j]).collect();
                 if wars.is_empty() { return; }
                 let (client, tp) = wars[self.rng.integers(0, wars.len() as i64) as usize];
-                let mut tgts: Vec<usize> = self.chars.iter().filter(|h| h.alive && h.hero && h.realm == tp).map(|h| h.id).collect();
+                let mut tgts: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|h| h.alive && h.hero && h.realm == tp).map(|h| h.id).collect();
                 let tr = self.realms[tp].ruler;
                 if tr != NONE && self.rng.random() < 0.3 { tgts = vec![tr]; }
                 if tgts.is_empty() { return; }

@@ -146,12 +146,12 @@ impl State {
         let y = self.year;
         for f in 0..self.realms.len() {
             if self.realms[f].extinct { continue; }
-            let mut n = self.chars.iter().filter(|h| h.alive && h.hero && h.realm == f).count();
+            let mut n = self.living.iter().map(|&i| &self.chars[i]).filter(|h| h.alive && h.hero && h.realm == f).count();
             let towns = self.alive_towns_of(f);
             let cap = (HERO_CAP + 16).min(1 + towns.len() / 25);
             if n >= cap { continue; }
             let adult = ADULT[self.realms[f].people] as i64;
-            let heirs: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == f && !c.hero && c.ruled.is_none() && c.adult(y) && c.age(y) < adult + 25
+            let heirs: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == f && !c.hero && c.ruled.is_none() && c.adult(y) && c.age(y) < adult + 25
                 && c.father != NONE && (self.chars[c.father].hero || self.chars[c.father].renown > 100.0)).map(|c| c.id).collect();
             for c in heirs {
                 if n >= cap { break; }
@@ -233,7 +233,7 @@ impl State {
         let mut hunters: Vec<(usize, usize)> = vec![];
         self.acted.clear();
         for t in self.towns.iter_mut() { t.guard = 0.0; t.raided = None; t.raided_by = NONE; }
-        let heroes: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.hero).map(|c| c.id).collect();
+        let heroes: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.hero).map(|c| c.id).collect();
         for h in heroes {
             if !self.chars[h].alive { continue; }
             let mut home = self.hero_home(h);
@@ -478,7 +478,7 @@ impl State {
             Some(format!("speaks {rite}; overnight every town of the {} stands behind new stone", self.pname(k)))
         } else if s == 1 && y - self.last_plague < 10 {
             for t in self.alive_towns_of(k) { self.towns[t].pop *= 1.15; }
-            for o in 0..self.chars.len() { if self.chars[o].alive && self.chars[o].hero && self.chars[o].realm == k { self.chars[o].hp = 100.0; } }
+            for o in self.living.clone() { if self.chars[o].alive && self.chars[o].hero && self.chars[o].realm == k { self.chars[o].hp = 100.0; } }
             Some(format!("speaks {rite}; the sick rise from their beds across the land of the {}", self.pname(k)))
         } else if s == 2 && self.blight > 0 {
             self.realms[k].mods.retain(|m| m.0 != "food"); self.realms[k].mods.push(("food", 1.4, y + 25));

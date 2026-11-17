@@ -101,7 +101,7 @@ impl State {
 
     pub fn meters_year(&mut self) {
         let y = self.year;
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if !c.alive || c.age(y) < 6 { continue; }
             let loved: f64 = c.loves.iter().map(|x| (x.2 / 5.0).min(20.0)).sum();
@@ -163,7 +163,7 @@ impl State {
         let y = self.year;
         for k in 0..self.realms.len() {
             if !self.active(k) { continue; }
-            let circle: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.adult(y) && (c.house != NONE || c.hero || !c.duchies.is_empty())).map(|c| c.id).collect();
+            let circle: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.adult(y) && (c.house != NONE || c.hero || !c.duchies.is_empty())).map(|c| c.id).collect();
             if circle.len() < 2 { continue; }
             for _ in 0..(circle.len() / 12).max(1) {
                 if self.rng.random() > 0.35 { continue; }
@@ -228,7 +228,7 @@ impl State {
                 }
             }
         }
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             if !self.chars[i].alive || !self.chars[i].has_trait("fickle") { continue; }
             let loves = self.chars[i].loves.clone();
             let mut keep = vec![];

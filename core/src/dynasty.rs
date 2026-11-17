@@ -54,7 +54,8 @@ impl State {
 
     pub fn dynasty_year(&mut self) {
         let y = self.year;
-        let living: Vec<usize> = (0..self.chars.len()).filter(|&i| self.chars[i].alive).collect();
+        let t_mort = std::time::Instant::now();
+        let living: Vec<usize> = self.living.iter().copied().filter(|&i| self.chars[i].alive).collect();
         for cid in living {
             let c = &self.chars[cid];
             let a = c.age(y);
@@ -71,35 +72,47 @@ impl State {
                 self.kill(cid, why.into());
             }
         }
-        self.births();
+        self.sub_tick("dynasty: deaths", t_mort);
+        let t = std::time::Instant::now(); self.births(); self.sub_tick("dynasty: births", t);
+        let (mut t_succ, mut t_plot, mut t_marry, mut t_court) = (0.0, 0.0, 0.0, 0.0);
         for k in 0..self.realms.len() {
             if self.realms[k].extinct { continue; }
+            let t = std::time::Instant::now();
             let r = self.realms[k].ruler;
             if r == NONE || !self.chars[r].alive {
                 let how = if r != NONE { self.chars[r].cause.clone().unwrap_or_default() } else { "the throne lay empty".into() };
                 self.succeed(k, &how);
                 if self.realms[k].extinct || self.realms[k].ruler == NONE { continue; }
             }
+            t_succ += t.elapsed().as_secs_f64();
+            let t = std::time::Instant::now();
             self.regency(k);
             self.plots(k);
+            t_plot += t.elapsed().as_secs_f64();
             let r = self.realms[k].ruler;
             if r != NONE && !self.chars[r].alive {
                 let how = self.chars[r].cause.clone().unwrap_or_default();
                 self.succeed(k, &how);
                 if self.realms[k].extinct || self.realms[k].ruler == NONE { continue; }
             }
+            let t = std::time::Instant::now();
             self.marriages(k);
+            t_marry += t.elapsed().as_secs_f64();
+            let t = std::time::Instant::now();
             for c in self.court(k) {
                 if !self.chars[c].hero {
                     let xp = if self.chars[c].age(y) < ADULT[self.realms[k].people] as i64 + 20 { 40.0 } else { 8.0 };
                     self.gain_xp(c, xp);
                 }
             }
+            t_court += t.elapsed().as_secs_f64();
             let h = self.realms[k].house;
             if h != NONE { self.houses[h].prestige += 1.0; self.houses[h].reign_years += 1; }
         }
-        self.councils();
-        self.council_effects();
+        for (n, v) in [("dynasty: succession", t_succ), ("dynasty: regency and plots", t_plot), ("dynasty: marriages", t_marry), ("dynasty: court xp", t_court)] {
+            match self.phase_times.iter_mut().find(|x| x.0 == n) { Some(x) => x.1 += v, None => self.phase_times.push((n, v)) }
+        }
+        let t = std::time::Instant::now(); self.councils(); self.council_effects(); self.sub_tick("dynasty: councils", t);
     }
 
     /// A power gene carried unseen wakes (lineage.awaken).
@@ -123,7 +136,7 @@ impl State {
 
     fn births(&mut self) {
         let y = self.year;
-        let mothers: Vec<usize> = (0..self.chars.len()).filter(|&i| {
+        let mothers: Vec<usize> = self.living.iter().copied().filter(|&i| {
             let c = &self.chars[i];
             c.alive && c.female && c.spouse != NONE && !c.undead
         }).collect();
@@ -182,7 +195,7 @@ impl State {
 
     pub fn adults_of(&self, k: usize, house: usize) -> Vec<usize> {
         let y = self.year;
-        self.chars.iter().filter(|c| c.alive && c.realm == k && c.adult(y) && (house == NONE || c.house == house)).map(|c| c.id).collect()
+        self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.adult(y) && (house == NONE || c.house == house)).map(|c| c.id).collect()
     }
 
     fn find_match(&mut self, c: usize, pool: &[usize]) -> usize {

@@ -69,6 +69,11 @@ pub struct State {
     pub ledger: std::collections::BTreeMap<(i64, usize), Vec<(&'static str, f64)>>,
     pub tx: Vec<(i64, usize, &'static str, f64, String, usize)>,
     pub phase_times: Vec<(&'static str, f64)>,
+    /// Ids of the living, in id order (so a scan over it meets people in the same order as one over `chars`).
+    /// Rebuilt each year; births are appended; the dead stay until the next rebuild, so readers still check `alive`.
+    pub living: Vec<usize>,
+    /// Open-sea cells far from any shore, where sea monsters rise (the map's seas never change).
+    pub deep_sea: Vec<(usize, usize)>,
     pub tribes: Vec<crate::bending::Tribe>,
     pub concord: usize,
     pub concord_next: usize,
@@ -110,6 +115,10 @@ pub struct State {
 
 impl State {
     /// Add the time since `t` to a sub-phase's running total (`World.phase_times`).
+    pub fn rebuild_living(&mut self) {
+        self.living = (0..self.chars.len()).filter(|&i| self.chars[i].alive).collect();
+    }
+
     pub fn sub_tick(&mut self, name: &'static str, t: std::time::Instant) {
         let d = t.elapsed().as_secs_f64();
         match self.phase_times.iter_mut().find(|x| x.0 == name) { Some(x) => x.1 += d, None => self.phase_times.push((name, d)) }
@@ -362,6 +371,7 @@ impl State {
         c.health = 5.0 + if c.has(gene("hale")) { 1.0 } else { 0.0 } - if c.has(gene("sickly")) { 2.0 } else { 0.0 } + self.rng.normal(0.0, 0.5);
         c.orientation = self.rng.weighted(&[0.86, 0.05, 0.09]) as u8;
         self.chars.push(c);
+        self.living.push(id);
         if father != NONE { self.chars[father].children.push(id); }
         if mother != NONE { self.chars[mother].children.push(id); }
         id
@@ -467,7 +477,7 @@ impl State {
         let old = self.realms[k].ruler;
         let old_house = if old != NONE { self.chars[old].house } else if !self.realms[k].reigns.is_empty() { self.chars[self.realms[k].reigns.last().unwrap().id].house } else { NONE };
         if new_dyn && old_house != NONE && !self.realms[k].reigns.is_empty() {
-            let kin: Vec<usize> = self.chars.iter().filter(|m| m.alive && m.house == old_house && m.id != cid).map(|m| m.id).collect();
+            let kin: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|m| m.alive && m.house == old_house && m.id != cid).map(|m| m.id).collect();
             for m in kin { self.remember(m, cid, "took my family's throne", -50.0, 0.5); }
         }
         let lead = if new_dyn && !self.realms[k].reigns.is_empty() { "**A new dynasty.** " } else { "" };

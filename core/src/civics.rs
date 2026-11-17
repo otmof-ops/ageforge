@@ -127,7 +127,7 @@ impl State {
             if ks.is_empty() { continue; }
             let tyr = ks.iter().map(|&k| self.chars[self.realms[k].ruler].tyranny).sum::<f64>() / ks.len() as f64;
             let wars = ks.iter().filter(|&&k| self.war[k].iter().any(|&w| w)).count() as f64 / ks.len() as f64;
-            let merch = self.chars.iter().filter(|c| c.alive && c.people == ci && c.profession == Some("merchant")).count() as f64 / ks.len() as f64;
+            let merch = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.people == ci && c.profession == Some("merchant")).count() as f64 / ks.len() as f64;
             let cu = &mut self.cultures[ci];
             cu.trend[0] += 0.006 * (wars - 0.4) - 0.003 * (tyr - 20.0) / 10.0;
             cu.trend[3] += 0.004 * (merch - 1.5);
@@ -345,7 +345,7 @@ impl State {
             if !self.active(k) { continue; }
             let r = self.realms[k].ruler;
             let council = self.realms[k].council;
-            let great: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.adult(y)
+            let great: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.adult(y)
                 && (!c.duchies.is_empty() || !c.lordships.is_empty() || matches!(c.profession, Some("merchant") | Some("priest")) || council.contains(&c.id)))
                 .map(|c| c.id).collect();
             if great.len() < 3 { continue; }

@@ -94,7 +94,7 @@ impl State {
         let y = self.year;
         let food_mod: Vec<f64> = self.realms.iter().map(|k| k.modv("food", y)).collect();
         let mut seed = vec![1.0; self.realms.len()];
-        for c in self.chars.iter().filter(|c| c.alive && c.hero) { if c.items.iter().any(|&i| self.items[i].special == Some("food")) && c.realm < seed.len() { seed[c.realm] = 1.2; } }
+        for c in self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.hero) { if c.items.iter().any(|&i| self.items[i].special == Some("food")) && c.realm < seed.len() { seed[c.realm] = 1.2; } }
         let god: Vec<Option<f64>> = (0..self.realms.len()).map(|k| self.god_harvest.iter().find(|g| g.0 == k && g.2 >= y).map(|g| g.1)).collect();
         let tiers: Vec<f64> = self.realms.iter().map(|k| k.realm_tier as f64).collect();
         for &i in &live {
@@ -235,7 +235,7 @@ impl State {
         let sector = |p: &str| match p { "smith" | "enchanter" | "alchemist" | "shipwright" => 2, "merchant" | "captain" => 3, "priest" => 4, "thief" | "assassin" | "bandit" => 5, _ => 6 };
         let pskill = |p: &str| match p { "smith" => Some("Smithing"), "enchanter" => Some("Enchanting"), "alchemist" => Some("Alchemy"), "shipwright" => Some("Seamanship"),
                                           "merchant" => Some("Mercantile"), "captain" => Some("Navigation"), "priest" => Some("Speech"), _ => None };
-        for c in self.chars.iter().filter(|c| c.alive && c.home != NONE && c.home < n) {
+        for c in self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.home != NONE && c.home < n) {
             if let Some(g) = c.gift { town_gifts[c.home].push(GIFTS[g]); }
             let master = match c.profession { Some(p) => pskill(p).map(|s| (sector(p), c.skills[crate::power::skill_ix(s)])),
                                               None => { let t = self.tier(c); if t >= 3 { Some((6, t as f64 * 10.0)) } else { None } } };

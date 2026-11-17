@@ -21,7 +21,7 @@ impl State {
     /// The parts of the six stats that come from legacy, class effects, education and perks (Character._attr),
     /// refreshed once a year for the living.
     pub fn refresh_stats(&mut self) {
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             if !self.chars[i].alive { continue; }
             let c = &self.chars[i];
             let m = self.mods(c);
@@ -84,7 +84,7 @@ impl State {
 
     fn people_year(&mut self) {
         let y = self.year;
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if !c.alive || !c.adult(y) { continue; }
             if c.education.is_none() { self.educate(i); }
@@ -118,7 +118,7 @@ impl State {
             if realm.gold > cost * 6.0 { let i = (0..4).min_by_key(|&a| ct.amen[a]).unwrap(); ct.amen[i] = (ct.amen[i] + 1).min(5); }
             else if realm.gold < 0.0 { let i = (0..4).max_by_key(|&a| ct.amen[a]).unwrap(); ct.amen[i] = (ct.amen[i].max(2)) - 1; }
             // positions
-            let pool: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.adult(y) && c.id != r).map(|c| c.id).collect();
+            let pool: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.adult(y) && c.id != r).map(|c| c.id).collect();
             let mut used: Vec<usize> = vec![];
             for pos in POSITIONS {
                 let cur = self.realms[k].court.as_ref().unwrap().pos.iter().find(|p| p.0 == pos).map(|p| p.1);
@@ -191,7 +191,7 @@ impl State {
             self.gain_legacy(r, "ruler", 60.0);
             event = Some("a court poet sings of the ruler".into());
         } else if roll < 0.17 {
-            let smiths: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && matches!(c.profession, Some("smith") | Some("enchanter"))).map(|c| c.id).collect();
+            let smiths: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && matches!(c.profession, Some("smith") | Some("enchanter"))).map(|c| c.id).collect();
             if !smiths.is_empty() && self.realms[k].gold > 150.0 {
                 let sm = *smiths.iter().max_by(|&&a, &&b| {
                     let s = |c: usize| self.chars[c].skills[skill_ix("Smithing")] + self.chars[c].skills[skill_ix("Enchanting")];
@@ -223,7 +223,7 @@ impl State {
     /// What a child does with what was handed down to them (youth.youth_year).
     pub fn youth_year(&mut self) {
         let y = self.year;
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if !c.alive { continue; }
             let age = c.age(y);

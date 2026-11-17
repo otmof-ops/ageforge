@@ -46,7 +46,7 @@ impl State {
         if let Some(&k) = kids.first() { return k; }
         if cc.spouse != NONE && self.chars[cc.spouse].alive { return cc.spouse; }
         if cc.house != NONE {
-            return self.chars.iter().filter(|x| x.alive && x.house == cc.house).min_by_key(|x| x.born).map(|x| x.id).unwrap_or(NONE);
+            return self.living.iter().map(|&i| &self.chars[i]).filter(|x| x.alive && x.house == cc.house).min_by_key(|x| x.born).map(|x| x.id).unwrap_or(NONE);
         }
         NONE
     }
@@ -136,7 +136,7 @@ impl State {
                         continue;
                     }
                 }
-                let cands: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.adult(y) && c.id != r && !c.undead
+                let cands: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.adult(y) && c.id != r && !c.undead
                     && c.disgraced_until <= y && c.duchies.len() < 2 && (c.house != NONE || c.renown >= 200.0)).map(|c| c.id).collect();
                 if cands.is_empty() { self.duchies.get_mut(&dk).unwrap().holder = NONE; continue; }
                 let near: Vec<usize> = cands.iter().copied().filter(|&c| self.chars[c].lordships.iter()
@@ -371,7 +371,7 @@ impl State {
         nk.crown_law = crown_law;
         for &t in &towns { self.towns[t].capital = false; self.towns[t].realm = nid; }
         self.towns[cap].capital = true;
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if !c.alive || c.realm != k { continue; }
             let home_here = c.home != NONE && self.towns[c.home].realm == nid;

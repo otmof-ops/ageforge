@@ -195,7 +195,7 @@ impl State {
             if self.materials[mi].used { continue; }
             let land = self.materials[mi].land;
             let peoples: Vec<usize> = self.towns.iter().filter(|t| t.alive && t.landmass == land).map(|t| t.realm).collect();
-            let smiths: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.profession == Some("smith") && peoples.contains(&c.realm)).map(|c| c.id)
+            let smiths: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.profession == Some("smith") && peoples.contains(&c.realm)).map(|c| c.id)
                 .filter(|&c| self.skill_val(&self.chars[c], skill_ix("Smithing")) >= 85.0).collect();
             if smiths.is_empty() || self.rng.random() > 0.2 { continue; }
             let sm = *smiths.iter().max_by(|&&a, &&b| self.skill_val(&self.chars[a], skill_ix("Smithing")).partial_cmp(&self.skill_val(&self.chars[b], skill_ix("Smithing"))).unwrap()).unwrap();
@@ -219,7 +219,7 @@ impl State {
             self.say(format!("**A legendary forging.** {text}."), false);
             let k = self.chars[sm].realm;
             let p = self.chars[sm].people;
-            let hero = self.chars.iter().filter(|h| h.alive && h.hero && h.people == p).max_by(|a, b| a.renown.partial_cmp(&b.renown).unwrap()).map(|h| h.id);
+            let hero = self.living.iter().map(|&i| &self.chars[i]).filter(|h| h.alive && h.hero && h.people == p).max_by(|a, b| a.renown.partial_cmp(&b.renown).unwrap()).map(|h| h.id);
             match hero {
                 Some(h) => { self.give_item(h, id, true); let t = format!("{} gives {iname} to {}.", self.realms[k].name, self.who(h)); self.say(t, true); }
                 None => self.realms[k].treasury.push(id),
@@ -247,7 +247,7 @@ impl State {
                 }
                 "blood" => {
                     let h = self.curses[ci].house;
-                    let members: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.house == h).map(|c| c.id).collect();
+                    let members: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.house == h).map(|c| c.id).collect();
                     let hn = self.houses[h].name.clone();
                     let (wr, calm) = (PERSONALITY.iter().position(|p| *p == "wrathful").unwrap(), PERSONALITY.iter().position(|p| *p == "calm").unwrap());
                     for c in members {
@@ -261,7 +261,7 @@ impl State {
                 "item" => {
                     let it = self.curses[ci].item;
                     let wr = PERSONALITY.iter().position(|p| *p == "wrathful").unwrap();
-                    let bearers: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.items.contains(&it)).map(|c| c.id).collect();
+                    let bearers: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.items.contains(&it)).map(|c| c.id).collect();
                     for c in bearers {
                         self.chars[c].tyranny = (self.chars[c].tyranny + 1.0).min(100.0);
                         if !self.chars[c].personality.contains(&wr) && self.rng.random() < 0.1 {
@@ -278,7 +278,7 @@ impl State {
 
     fn lifter_for(&mut self) -> usize {
         if self.rng.random() > 0.02 { return NONE; }
-        let cands: Vec<usize> = self.chars.iter().filter(|c| c.alive && (c.concord || c.classes.iter().any(|x| matches!(CLASSES[x.0].name, "Saint" | "Archdruid"))
+        let cands: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && (c.concord || c.classes.iter().any(|x| matches!(CLASSES[x.0].name, "Saint" | "Archdruid"))
             || self.skill_val(c, skill_ix("Restoration")) >= 95.0)).map(|c| c.id).collect();
         if cands.is_empty() { NONE } else { cands[self.rng.integers(0, cands.len() as i64) as usize] }
     }
@@ -427,7 +427,7 @@ impl State {
             if self.realms[k].treasury.contains(&blade) { self.realms[k].treasury.retain(|&x| x != blade); return format!(" from the treasury of {}", self.realms[k].name); }
             if self.realms[k].market.contains(&blade) { self.realms[k].market.retain(|&x| x != blade); return format!(" from the market of {}", self.realms[k].name); }
         }
-        for c in 0..self.chars.len() { if self.chars[c].alive && self.chars[c].items.contains(&blade) { self.chars[c].items.retain(|&x| x != blade); return format!(", given up by {}", self.chars[c].name); } }
+        for c in self.living.clone() { if self.chars[c].alive && self.chars[c].items.contains(&blade) { self.chars[c].items.retain(|&x| x != blade); return format!(", given up by {}", self.chars[c].name); } }
         for r in 0..self.ruins.len() { if self.ruins[r].loot.contains(&blade) { self.ruins[r].loot.retain(|&x| x != blade); return format!(" from {}", self.ruins[r].name); } }
         for m in 0..self.monsters.len() { if self.monsters[m].items.contains(&blade) { self.monsters[m].items.retain(|&x| x != blade); return format!(" out of the hoard of {}", self.monsters[m].name); } }
         String::new()

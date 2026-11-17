@@ -44,11 +44,13 @@ impl State {
 
     fn fleets_year(&mut self) {
         let y = self.year;
+        // every realm's ports, once: neither ports nor the living realms change during this pass
+        let ports: Vec<Vec<usize>> = (0..self.realms.len()).map(|k| if self.realms[k].extinct { vec![] } else { self.ports_of(k) }).collect();
         for k in 0..self.realms.len() {
             if self.realms[k].extinct { continue; }
-            let ps = self.ports_of(k);
+            let ps = ports[k].clone();
             if ps.is_empty() { self.realms[k].warships *= 0.9; self.realms[k].merchants *= 0.9; continue; }
-            let wrights: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.profession == Some("shipwright")).map(|c| c.id).collect();
+            let wrights: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.profession == Some("shipwright")).map(|c| c.id).collect();
             let best = wrights.iter().map(|&w| self.skill_val(&self.chars[w], skill_ix("Seamanship"))).fold(10.0, f64::max);
             let tier = (0..SHIPS.len()).filter(|&i| best >= SHIPS[i].1).max().unwrap_or(0);
             let cap = (self.cultures[self.realms[k].people].best("ships", 0.0) as i64 - 1).max(0) as usize;
@@ -72,7 +74,7 @@ impl State {
             let realm = &mut self.realms[k];
             realm.warships = 0.97 * realm.warships + 0.004 * pw / cost * if at_war { 1.5 } else { 1.0 } * timber;
             realm.merchants = (4.0 * ps.len() as f64).min(0.97 * realm.merchants + 0.006 * pw / cost + 0.3);
-            let partners = (0..self.realms.len()).filter(|&o| o != k && !self.realms[o].extinct && !self.war[k][o] && !self.ports_of(o).is_empty()).count() as f64;
+            let partners = (0..self.realms.len()).filter(|&o| o != k && !self.realms[o].extinct && !self.war[k][o] && !ports[o].is_empty()).count() as f64;
             let lost = self.piracy[k] + self.sea_terror[k];
             let (merch, block) = (self.realms[k].merchants, self.realms[k].blockaded > y);
             for &t in &ps {
@@ -93,7 +95,7 @@ impl State {
             if ps.is_empty() || self.cultures[self.realms[k].people].best("ships", 0.0) < 1.0 { continue; }
             let mut unknown: Vec<usize> = (0..self.map.lands.len()).filter(|&l| !self.realms[k].known.contains(&(l as i32))).collect();
             if unknown.is_empty() { continue; }
-            let mut tries: Vec<(usize, f64)> = self.chars.iter().filter(|c| c.alive && c.realm == k && c.profession == Some("captain")).map(|c| (c.id, self.skill_val(c, skill_ix("Navigation")))).collect();
+            let mut tries: Vec<(usize, f64)> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == k && c.profession == Some("captain")).map(|c| (c.id, self.skill_val(c, skill_ix("Navigation")))).collect();
             tries.push((NONE, 15.0));
             for (c, nav) in tries {
                 let src = ps[self.rng.integers(0, ps.len() as i64) as usize];
@@ -224,7 +226,10 @@ impl State {
     }
 
     fn sea_monsters_year(&mut self) {
-        let deep: Vec<(usize, usize)> = (0..self.map.h * self.map.w).filter(|&i| self.map.sea_dist.v[i] >= 6.0).map(|i| (i / self.map.w, i % self.map.w)).collect();
+        if self.deep_sea.is_empty() {
+            self.deep_sea = (0..self.map.h * self.map.w).filter(|&i| self.map.sea_dist.v[i] >= 6.0).map(|i| (i / self.map.w, i % self.map.w)).collect();
+        }
+        let deep = std::mem::take(&mut self.deep_sea);
         let share = (deep.len() / 15000).max(1);
         for &(kind, prange, cap, _, p0, life) in SEA_MONSTERS.iter() {
             let n = self.monsters.iter().filter(|m| m.alive && m.kind == kind).count();
@@ -238,6 +243,9 @@ impl State {
                 if kind != "sea serpent" { let t = format!("Sailors of {} speak of {name} rising from the deep.", self.sea_name_at(pos)); self.say(t, kind == "kraken"); }
             }
         }
+        self.deep_sea = deep;
+        // every realm's ports, once: towns do not change hands while the monsters swim
+        let ports: Vec<Vec<usize>> = (0..self.realms.len()).map(|k| self.ports_of(k)).collect();
         for m in 0..self.monsters.len() {
             if !self.monsters[m].alive || !self.monsters[m].sea { continue; }
             for _ in 0..3 {
@@ -248,7 +256,7 @@ impl State {
             }
             for k in 0..self.realms.len() {
                 let mp = self.monsters[m].pos;
-                if !self.ports_of(k).iter().any(|&t| mdist(self.towns[t].pos, mp) < 30.0) { continue; }
+                if !ports[k].iter().any(|&t| mdist(self.towns[t].pos, mp) < 30.0) { continue; }
                 self.sea_terror[k] += (self.monsters[m].power / 20000.0).min(0.4);
                 if self.rng.random() < 0.05 { self.realms[k].merchants *= 0.9; }
                 if self.realms[k].warships >= 3.0 && self.rng.random() < 0.15 {
@@ -333,7 +341,7 @@ impl State {
         let mut alive: Vec<usize> = self.pirates.iter().copied().filter(|&p| self.chars[p].alive && self.chars[p].pirate).collect();
         let cap = PIRATE_CAP_BASE + self.map.lands.len() / 8;
         if alive.len() < cap && self.rng.random() < 0.3 {
-            let wanted = self.chars.iter().find(|c| c.alive && matches!(c.profession, Some("thief") | Some("bandit")) && c.bounty > 400.0 && !c.pirate).map(|c| c.id);
+            let wanted = self.living.iter().map(|&i| &self.chars[i]).find(|c| c.alive && matches!(c.profession, Some("thief") | Some("bandit")) && c.bounty > 400.0 && !c.pirate).map(|c| c.id);
             let src = if wanted.is_some() && self.rng.random() < 0.5 { wanted.unwrap() } else { NONE };
             alive.push(self.new_pirate(src));
         }

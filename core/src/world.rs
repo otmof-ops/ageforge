@@ -39,6 +39,7 @@ impl World {
         for _ in 0..years {
 
             let st = &mut self.st;
+            st.rebuild_living();
             st.year += 1;
             { let t = Instant::now(); st.town_distance(); tick(&mut st.phase_times, "town_distance", t); }
             { let t = Instant::now(); self.compute_territory(); tick(&mut self.st.phase_times, "territory", t); }
@@ -118,7 +119,7 @@ impl World {
         let mut relation = vec![vec![0.0; 4]; 4];
         for i in 0..4 { for j in 0..4 { relation[i][j] = BASE_REL[i][j] + rng.normal(0.0, 8.0); } }
         for i in 0..4 { for j in 0..i { let m = (relation[i][j] + relation[j][i]) / 2.0; relation[i][j] = m; relation[j][i] = m; } }
-        let st = State { year: 0, phase_times: vec![], rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
+        let st = State { year: 0, phase_times: vec![], living: vec![], deep_sea: vec![], rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
                          owner: Grid::new(h, w, -1), relation, war: vec![], truce: vec![], duchies: Default::default(),
                          ktitles: Default::default(), breakaways: vec![], wars: vec![], war_since: vec![], weariness: vec![], armies: vec![],
@@ -255,6 +256,12 @@ impl World {
 
     /// Everything the screens and books show, in the Python engine's names (ledger rows from `since` on).
     fn snapshot<'py>(&self, py: Python<'py>, since: i64) -> PyResult<Bound<'py, PyDict>> { self.st.snapshot(py, since) }
+
+    /// One character's full record (the snapshot gives the forgotten dead only as shades).
+    fn character_full<'py>(&self, py: Python<'py>, cid: usize) -> PyResult<Bound<'py, PyDict>> {
+        if cid >= self.st.chars.len() { return Err(pyo3::exceptions::PyKeyError::new_err(cid)); }
+        self.st.character_full(py, cid)
+    }
 
     /// Grids for the map: terrain, the realm owning each cell (-1 none), landmass, mana, corrupted land.
     fn grids<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {

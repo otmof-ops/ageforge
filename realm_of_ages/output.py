@@ -249,12 +249,12 @@ def tree(realm, root, k, max_depth=8):
     rulers = {r["id"]: r for r in k.reigns}
     memo = {}
 
-    def has_ruler(c):
-        if c.id in memo:
-            return memo[c.id]
-        v = c.id in rulers or any(has_ruler(chars[x]) for x in c.children)
-        memo[c.id] = v
-        return v
+    def has_ruler(c, depth):
+        """Whether a ruler of this realm is c or a descendant the tree will still show (no deeper than max_depth)."""
+        key = (c.id, depth)
+        if key not in memo:
+            memo[key] = c.id in rulers or (depth < max_depth and any(has_ruler(chars[x], depth + 1) for x in c.children))
+        return memo[key]
     out = []
 
     def walk(c, depth):
@@ -277,7 +277,7 @@ def tree(realm, root, k, max_depth=8):
                    + (f"; {'; '.join(extra)}" if extra else ""))
         kids = sorted((chars[x] for x in c.children), key=lambda x: x.born)
         for kid in kids:
-            if has_ruler(kid) or depth < 1:
+            if has_ruler(kid, depth + 1) or depth < 1:
                 walk(kid, depth + 1)
     walk(root, 0)
     return out

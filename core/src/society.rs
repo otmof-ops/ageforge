@@ -56,7 +56,7 @@ impl State {
             let alive: Vec<usize> = self.guilds_soc[gi].members.iter().copied().filter(|&m| self.chars[m].alive).collect();
             self.guilds_soc[gi].members = alive;
         }
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             if !self.chars[i].alive { continue; }
             let Some(kind) = self.guild_kind_for(i) else { continue };
             let p = self.chars[i].people;
@@ -107,7 +107,7 @@ impl State {
             s.crime = 0.8 * s.crime + 0.2 * target;
             s.wealth *= 1.0 - 0.03 * s.crime;
         }
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if !c.alive || c.jailed_until > y || !matches!(c.profession, Some("thief") | Some("assassin") | Some("bandit")) { continue; }
             let mut home = c.home;
@@ -193,7 +193,7 @@ impl State {
         for i in 0..n { for j in 0..n { if i != j && self.war[i][j] && self.willing(i) { wars.push((i, j)); } } }
         if wars.is_empty() { return; }
         let (client, tp) = wars[self.rng.integers(0, wars.len() as i64) as usize];
-        let mut cands: Vec<usize> = self.chars.iter().filter(|h| h.alive && h.hero && h.realm == tp).map(|h| h.id).collect();
+        let mut cands: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|h| h.alive && h.hero && h.realm == tp).map(|h| h.id).collect();
         let tr = self.realms[tp].ruler;
         if tr != NONE && self.chars[tr].alive { cands.push(tr); }
         if cands.is_empty() { return; }
@@ -251,7 +251,7 @@ impl State {
     pub fn hunt_bounty(&mut self, h: usize) -> f64 {
         let y = self.year;
         let realm = self.chars[h].realm;
-        let target = self.chars.iter().filter(|c| c.alive && c.realm == realm && matches!(c.profession, Some("thief") | Some("assassin") | Some("bandit"))
+        let target = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == realm && matches!(c.profession, Some("thief") | Some("assassin") | Some("bandit"))
             && c.bounty > 50.0 && c.jailed_until <= y).max_by(|a, b| a.bounty.partial_cmp(&b.bounty).unwrap()).map(|c| c.id);
         let Some(c) = target else { return 0.0 };
         let evade = self.skill_val(&self.chars[c], skill_ix("Sneak")) * 10.0 + self.chars[c].level as f64 * 20.0;
@@ -280,13 +280,13 @@ impl State {
 
     pub fn religion_year(&mut self) {
         let y = self.year;
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if c.alive && c.adult(y) && (c.has_trait("zealous") || c.profession == Some("priest")) && self.skill_val(c, skill_ix("Speech")) >= 45.0
                 && c.attr(5, y) >= 7.0 && self.rng.random() < 0.004 { self.proclaim(i); }
         }
         let towns: Vec<usize> = (0..self.towns.len()).filter(|&t| self.towns[t].alive).collect();
-        let priests: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.profession == Some("priest")).map(|c| c.id).collect();
+        let priests: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.profession == Some("priest")).map(|c| c.id).collect();
         for p in priests {
             let home = if self.chars[p].home != NONE && self.towns[self.chars[p].home].alive { self.chars[p].home } else { self.capital_of(self.chars[p].realm) };
             if home == NONE || !self.towns[home].alive { continue; }

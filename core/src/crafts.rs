@@ -151,7 +151,7 @@ impl State {
             let mut towns = self.alive_towns_of(f);
             if towns.is_empty() { continue; }
             towns.sort_by(|&a, &b| self.towns[b].pop.partial_cmp(&self.towns[a].pop).unwrap());
-            let members: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == f).map(|c| c.id).collect();
+            let members: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == f).map(|c| c.id).collect();
             let n = towns.len();
             for &(pname, cap, prim, _) in PROFESSIONS.iter() {
                 let have = members.iter().filter(|&&c| self.chars[c].profession == Some(pname)).count();
@@ -182,7 +182,7 @@ impl State {
     pub fn specialists_year(&mut self) {
         let y = self.year;
         for k in self.realms.iter_mut() { k.made.clear(); }
-        for i in 0..self.chars.len() {
+        for i in self.living.clone() {
             let c = &self.chars[i];
             if !c.alive || c.jailed_until > y { continue; }
             let Some(p) = c.profession else { continue };
@@ -226,7 +226,7 @@ impl State {
                 self.realms[f].arms = 0.9 * self.realms[f].arms + 0.1 * avg;
             }
             let budget = 0.01 * self.alive_towns_of(f).iter().map(|&t| self.towns[t].wealth).sum::<f64>();
-            let smiths: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.realm == f && c.profession == Some("smith")).map(|c| c.id).collect();
+            let smiths: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.realm == f && c.profession == Some("smith")).map(|c| c.id).collect();
             for &s in &smiths { self.chars[s].gold += budget / smiths.len() as f64; }
             let arms = self.realms[f].arms;
             self.realms[f].battle_mult *= 1.0 + 0.04 * arms;
@@ -236,7 +236,7 @@ impl State {
 
     /// Heroes, shinobi, benders and the great of each people buy from their own people's market.
     fn market(&mut self) {
-        let mut buyers: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.gold > 50.0 && (c.hero || c.ruled.is_some() || c.clan != NONE || c.element.is_some())).map(|c| c.id).collect();
+        let mut buyers: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.gold > 50.0 && (c.hero || c.ruled.is_some() || c.clan != NONE || c.element.is_some())).map(|c| c.id).collect();
         buyers.sort_by(|&a, &b| self.chars[b].gold.partial_cmp(&self.chars[a].gold).unwrap());
         for c in buyers {
             let k = self.chars[c].realm;

@@ -56,7 +56,7 @@ impl State {
         let y = self.year;
         for t in 0..self.towns.len() {
             if !self.towns[t].alive || self.towns[t].crime < 0.2 || self.towns[t].wealth < 30.0 || self.rng.random() > 0.2 { continue; }
-            let here = self.chars.iter().filter(|c| c.alive && c.home == t && c.jailed_until <= y && matches!(c.profession, Some("thief") | Some("assassin") | Some("bandit")))
+            let here = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.home == t && c.jailed_until <= y && matches!(c.profession, Some("thief") | Some("assassin") | Some("bandit")))
                 .max_by(|a, b| a.bounty.partial_cmp(&b.bounty).unwrap()).map(|c| c.id);
             let Some(c) = here else { continue };
             let purse = 0.1 * self.towns[t].wealth;
@@ -95,7 +95,7 @@ impl State {
     }
 
     fn seals(&mut self) {
-        let heroes: Vec<usize> = self.chars.iter().filter(|c| c.alive && c.hero).map(|c| c.id).collect();
+        let heroes: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.hero).map(|c| c.id).collect();
         for h in heroes {
             let c = &self.chars[h];
             let merit = c.merit + if c.seal.is_none() { c.renown * 0.02 } else { 0.0 };
@@ -103,7 +103,7 @@ impl State {
             let s = (0..7).filter(|&i| self.chars[h].level >= SEAL_LEVEL[i] && merit >= SEAL_MERIT[i]).max().unwrap_or(0);
             if self.chars[h].seal.is_none_or(|x| x < s) {
                 if s >= 5 {
-                    let peers = self.chars.iter().filter(|o| o.alive && o.hero && o.seal.unwrap_or(0) >= s).count();
+                    let peers = self.living.iter().map(|&i| &self.chars[i]).filter(|o| o.alive && o.hero && o.seal.unwrap_or(0) >= s).count();
                     let t = format!("**The Wardens' Hall raises {} to the {}**; there are {} of that seal in the world.", self.who(h), SEALS[s], peers + 1);
                     self.say(t, false);
                 } else if s >= 3 { let t = format!("The Wardens' Hall raises {} to the {}.", self.who(h), SEALS[s]); self.say(t, true); }
@@ -129,7 +129,7 @@ impl State {
             self.hall.parties[i].members = alive;
             i += 1;
         }
-        let mut loners: Vec<usize> = self.chars.iter().filter(|c| c.hero && c.party == NONE).map(|c| c.id).filter(|&h| self.free(h)).collect();
+        let mut loners: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.hero && c.party == NONE).map(|c| c.id).filter(|&h| self.free(h)).collect();
         for i in (1..loners.len()).rev() { let j = self.rng.integers(0, i as i64 + 1) as usize; loners.swap(i, j); }
         for &h in &loners.clone() {
             if self.chars[h].party != NONE || self.rng.random() > 0.35 { continue; }
@@ -195,7 +195,7 @@ impl State {
             }
         }
         let y = self.year;
-        for c in 0..self.chars.len() {
+        for c in self.living.clone() {
             if !self.chars[c].alive || self.chars[c].posted <= 0.0 || self.chars[c].jailed_until > y { continue; }
             let t = self.chars[c].home;
             if t == NONE { continue; }
@@ -250,7 +250,7 @@ impl State {
 
     fn work(&mut self) {
         let mut bands: Vec<(bool, usize)> = (0..self.hall.parties.len()).map(|p| (true, self.hall.parties[p].id)).collect();
-        bands.extend(self.chars.iter().filter(|c| c.hero && c.party == NONE).map(|c| c.id).filter(|&h| self.free(h)).map(|h| (false, h)));
+        bands.extend(self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.hero && c.party == NONE).map(|c| c.id).filter(|&h| self.free(h)).map(|h| (false, h)));
         for i in (1..bands.len()).rev() { let j = self.rng.integers(0, i as i64 + 1) as usize; bands.swap(i, j); }
         let y = self.year;
         for (is_party, id) in bands {

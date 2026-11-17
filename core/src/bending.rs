@@ -126,7 +126,7 @@ impl State {
                 }
             }
         }
-        for c in 0..self.chars.len() { if self.chars[c].alive && self.chars[c].element.is_some() { self.train_bender(c); } }
+        for c in self.living.clone() { if self.chars[c].alive && self.chars[c].element.is_some() { self.train_bender(c); } }
         self.concord_year();
     }
 

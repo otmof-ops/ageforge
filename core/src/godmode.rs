@@ -166,6 +166,7 @@ impl State {
                 if self.chars[c].alive { return Ok(format!("{} is not dead.", self.full(c))); }
                 let ch = &mut self.chars[c];
                 ch.alive = true; ch.died = None; ch.cause = None; ch.hp = 100.0; ch.health = 6.0;
+                self.rebuild_living();
                 let t = format!("{} walks out of the grave.", self.full(c));
                 self.god_say(t)
             }

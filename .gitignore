@@ -10,3 +10,4 @@ ages-*/
 # the built Rust core
 core/target/
 realm_of_ages/_core*.so
+realm_of_ages/_core*.so.new

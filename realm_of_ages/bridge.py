@@ -117,6 +117,51 @@ class MChar(Obj):
         pass
 
 
+class Shade:
+    """One of the forgotten dead: name, family, birth, death and calling. Asked for anything more, it fetches its full
+    record from the world and becomes a full character, so a screen never meets a missing field."""
+    alive, hero, renown, ruled, concord, clan, element, custom, tracked = False, False, 0.0, None, False, None, None, False, False
+    peak_tier, journal = -1, []
+
+    def __init__(self, rec, realm):
+        (self.id, self.name, self.regnal, self.epithet, self.house, self.people), \
+            (self.female, self.born, self.died, self.cause, self.father, self.mother), \
+            (self.spouse, self.children, self.realm, self.level, self.profession, cls, genetic) = rec
+        self.genetic = set(genetic)
+        self.classes = [[cls, self.level]]
+        self._realm = realm
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        realm = self.__dict__["_realm"]
+        full = MChar(realm._world.character_full(self.__dict__["id"]), realm)
+        self.__dict__.update(full.__dict__)
+        self.__class__ = MChar
+        return getattr(self, name)
+
+    def full_name(self, houses=None):
+        n = self.name + (f" {self.regnal}" if self.regnal else "")
+        return n + (f" {self.epithet}" if self.epithet else "")
+
+    def house_name(self, houses=None):
+        return self._realm.houses[self.house].name if self.house is not None else "no house"
+
+    def age(self, year):
+        return year - self.born
+
+    def adult(self, year):
+        from .data import ADULT
+        return self.age(year) >= ADULT[self.people]
+
+    def tier(self):
+        return -1
+
+    @property
+    def items(self):
+        return []
+
+
 class MKingdom(Obj):
     def __init__(self, d, realm):
         super().__init__(d)
@@ -195,7 +240,10 @@ class Mirror:
         self.extinct = [k.extinct for k in self.kingdoms]
         self.settlements = [MTown(d) for d in s["towns"]]
         self.by_id = {t.id: t for t in self.settlements}
-        self.chars = {d["id"]: MChar(d, self) for d in s["chars"]}
+        self._world = world
+        every = [(d["id"], MChar(d, self)) for d in s["chars"]] + [(rec[0][0], Shade(rec, self)) for rec in s["shades"]]
+        every.sort(key=lambda x: x[0])
+        self.chars = dict(every)
         self.living = {i for i, c in self.chars.items() if c.alive}
         self.hero_ids = {i for i in self.living if self.chars[i].hero}
         self.monsters = [Obj(dict(d, items=[self.items[i] for i in d["items"]])) for d in s["monsters"]]

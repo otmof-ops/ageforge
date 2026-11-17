@@ -28,6 +28,15 @@ impl State {
               "maker" => o(it.maker), "enchanter" => o(it.enchanter)))
     }
 
+    /// Whether the books need a character in full: the living, and the dead who left a mark.
+    pub fn notable(&self, c: &Character) -> bool {
+        c.alive || c.hero || c.ruled.is_some() || c.renown > 0.0 || c.concord || c.pirate || c.clan != NONE || c.element.is_some()
+            || c.beast.is_some() || c.custom || !c.duchies.is_empty() || !c.items.is_empty()
+    }
+
+    /// One character's full record, as the snapshot gives the living.
+    pub fn character_full<'py>(&self, py: Python<'py>, cid: usize) -> PyResult<Bound<'py, PyDict>> { self.char_dict(py, &self.chars[cid]) }
+
     fn char_dict<'py>(&self, py: Python<'py>, c: &Character) -> PyResult<Bound<'py, PyDict>> {
         let y = self.year;
         let tier = self.tier(c);
@@ -163,9 +172,19 @@ impl State {
                 "magic" => t.magic, "guard" => t.guard, "garrison" => t.garrison, "game" => t.game, "duchy" => t.duchy))?;
         }
         s.set_item("towns", towns)?;
+        // full records for the living and the notable dead; the rest of the dead as shades (World.character_full
+        // fetches one in full when a screen asks for more than a shade holds)
         let chars = PyList::empty(py);
-        for c in &self.chars { chars.append(self.char_dict(py, c)?)?; }
+        let mut shades = vec![];
+        for c in &self.chars {
+            if self.notable(c) { chars.append(self.char_dict(py, c)?)?; continue; }
+            let cls = c.classes.last().map(|x| CLASSES[x.0].name).unwrap_or("Commoner");
+            shades.push(((c.id, &c.name, c.regnal.clone(), c.epithet.clone(), o(c.house), c.people),
+                         (c.female, c.born, c.died, c.cause.clone(), o(c.father), o(c.mother)),
+                         (o(c.spouse), c.children.clone(), c.realm, c.level, c.profession, cls, c.genetic.iter().map(|&g| GENETIC[g]).collect::<Vec<_>>())));
+        }
         s.set_item("chars", chars)?;
+        s.set_item("shades", shades)?;
         let houses: Vec<Bound<PyDict>> = self.houses.iter().map(|h| d!(py, "id" => h.id, "name" => &h.name, "people" => h.people, "founder" => h.founder,
             "founded" => h.founded, "prestige" => h.prestige, "rulers" => h.rulers, "track" => &h.track, "legacy" => h.legacy, "origin" => &h.origin, "curse" => if h.cursed { Some(h.name.clone()) } else { None }, "reign_years" => h.reign_years, "parent" => None::<usize>, "dynasty" => h.id)).collect();
         s.set_item("houses", houses)?;

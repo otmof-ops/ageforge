@@ -861,7 +861,7 @@ impl State {
 
     fn scribes_year(&mut self) {
         let mut out: Vec<(usize, usize, i64)> = vec![];
-        for c in 0..self.chars.len() {
+        for c in self.living.clone() {
             if !self.chars[c].alive { continue; }
             let t = self.tier(&self.chars[c]);
             if t < 1 || (self.chars[c].hero && self.rng.random() < 0.5) { continue; }
@@ -917,7 +917,7 @@ impl State {
     }
 
     fn arts_year(&mut self) {
-        for c in 0..self.chars.len() {
+        for c in self.living.clone() {
             let cc = &self.chars[c];
             if !cc.alive || !cc.classes.iter().any(|x| MARTIAL_CLASSES.contains(&CLASSES[x.0].name)) { continue; }
             let gate = self.power_gate(cc, true);
@@ -938,7 +938,7 @@ impl State {
 
     fn beyond_year(&mut self) {
         let y = self.year;
-        for c in 0..self.chars.len() {
+        for c in self.living.clone() {
             let cc = &self.chars[c];
             if !cc.alive || !cc.custom || y < cc.beyond_ready { continue; }
             let t = self.tier(cc);

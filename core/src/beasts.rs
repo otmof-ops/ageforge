@@ -21,7 +21,7 @@ impl State {
     pub fn beasts_year(&mut self) {
         let y = self.year;
         let mut riders = vec![0u32; self.realms.len()];
-        for c in 0..self.chars.len() {
+        for c in self.living.clone() {
             if !self.chars[c].alive { continue; }
             if let Some(b) = self.chars[c].beast.clone() {
                 if (y - b.3) as f64 > b.4 {
