@@ -23,7 +23,7 @@ use crate::events::classify;
 pub const RULES_VERSION: i64 = 2;
 
 pub const PRESETS: [i64; 9] = [1, 5, 10, 50, 100, 200, 300, 500, 1000];
-pub const SIZES: [(&str, usize, usize); 4] = [("vast (480 x 270)", 480, 270), ("large (360 x 200)", 360, 200), ("middling (240 x 135)", 240, 135), ("small (160 x 90)", 160, 90)];
+pub const SIZES: [(&str, usize, usize); 3] = [("Small (240 x 135)", 240, 135), ("Standard (480 x 270)", 480, 270), ("Huge (640 x 360)", 640, 360)];
 
 #[derive(Clone)]
 pub struct Event {
