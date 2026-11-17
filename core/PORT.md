@@ -47,6 +47,8 @@ A slice is done when its numbers sit inside the Python engine's own seed-to-seed
 
 The Python engine stays in the tree as the reference the port is checked against; the game no longer runs it.
 
+| 8 | The game in Rust: the terminal interface, god mode, the character creator and editor, the books, the maps and saving (`game/`), with no Python at all | tui, session, bridge, godmode, output | done. NumPy's seed sequence ported (`engine::seed_state`, checked on 8 seeds), so every seed grows the same world as before; the pure Rust world and the Python extension give the same 300 years event for event. 300 years with every book and three maps in 4.5 s |
+
 ## Speed in long worlds
 
 A world grows: seed 4 reaches 1,700 towns by year 400 and 230,000 characters (living and dead) by year 1000.

@@ -114,7 +114,7 @@ impl State {
         }).collect();
         for c in makers {
             // a working life: the gifted finish something worth keeping once in forty or fifty years, a master more often
-            if self.rng.random() > 0.015 + 0.0008 * self.chars[c].attr(5, y) { continue; }
+            if self.rng.random() > (0.015 + 0.0008 * self.chars[c].attr(5, y)) * self.ambition_bias(c, "works") { continue; }
             let k = self.chars[c].realm;
             if self.realms[k].extinct { continue; }
             let p = self.chars[c].people;
@@ -220,6 +220,7 @@ impl State {
             }
             let fame = q * if patron { 1.5 } else { 1.0 };
             self.gain_fame(c, if kind == "philosophy" { "scholar" } else if kind == "theology" { "prophet" } else { "artist" }, fame);
+            self.life(c, "culture", format!("Finishes {title}, a {kind}."));
             if kind == "epic" && hero != NONE && self.chars[hero].alive {
                 // a hero sung is a hero remembered: the song carries their deeds into their line's legacy
                 let top = self.chars[hero].legacy.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|x| x.0).unwrap_or(0);
@@ -333,6 +334,7 @@ impl State {
         let w = self.add_work("heirloom", title.clone(), c, format!("{name}, {deeds}"), (self.chars[c].renown / 30.0).clamp(5.0, 100.0), k, NONE);
         self.works[w].house = house;
         self.works[w].holder = heir;
+        self.life(heir, "heart", format!("Receives {title}, left to them by {name}."));
         self.works[w].year = y;
         let hw = self.who(heir);
         self.note(w, format!("{} ({item_note}) left by {name} to {hw}", title));

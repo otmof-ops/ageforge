@@ -356,7 +356,8 @@ impl State {
             party: NONE, pending: None, kills: 0, beyond_ready: 0, posted: 0.0, beast: None, merged: None, bend: vec![], high_art: None, tribe: NONE,
             last_peace: -99, ki: 0.0, natures: vec![], sarts: vec![], srank: 0, missions: 0, pirate: false, ship: (String::new(), 0, 0), haven: 0,
             infamy: 0.0, marque: NONE, resume: vec![], guilds: vec![], guild_rank: None, extra: [0.0; 6], alive: true, died: None, cause: None, home: NONE,
-            gold: 0.0,
+            gold: 0.0, origin: "", origin_story: String::new(), birthplace: NONE, ambition: "", ambition_met: None, orphan: false,
+            orphaned_by: NONE, tracked: false, journal: vec![], in_trust: vec![],
         };
         // a gift (arcana.maybe_gift)
         if self.rng.random() < GIFT_CHANCE[0] {
@@ -403,6 +404,7 @@ impl State {
                     let name = CLASSES[new].name;
                     let a = if "AEIOU".contains(&name[..1]) { "an" } else { "a" };
                     let text = format!("{} reaches level {} and becomes {a} {name}.", self.who(cid), self.chars[cid].level);
+                    self.life(cid, "heroes", format!("Reaches level {} and becomes {a} {name}.", self.chars[cid].level));
                     self.say(text, false);
                     if name == "Lich" {
                         self.chars[cid].undead = true;
@@ -471,6 +473,8 @@ impl State {
 
     /// dynasty.crown for a realm's first ruler; successions come with slice 4.
     pub fn crown(&mut self, k: usize, cid: usize, reason: &str) {
+        let kn = self.realms[k].name.clone();
+        self.life(cid, "politics", format!("Takes the throne of {kn}."));
         if let Some((held, _, None)) = self.chars[cid].ruled {
             if held != k && !self.realms[held].extinct {
                 self.unite_crowns(held, k, cid, reason);

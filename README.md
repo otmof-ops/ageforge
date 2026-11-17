@@ -6,12 +6,11 @@ wars, plagues, famines, markets, magic, monsters and legends, none of it scripte
 forward a year or a thousand at a time, read everything that happened, and reach in with god mode whenever you like.
 
 ```
-pip install -r requirements.txt
 bin/realm-tui
 ```
 
-The world itself runs in Rust; `bin/realm-tui` builds it the first time (`bin/build-core`, which needs a Rust
-toolchain from [rustup](https://rustup.rs)). Python draws the interface, the maps and the books.
+Ageforge is a Rust program. `bin/realm-tui` builds it the first time (it needs a Rust toolchain from
+[rustup](https://rustup.rs)) and opens the game.
 
 ---
 
@@ -67,36 +66,49 @@ villain who returns each age against a marked hero and a seer.
 
 ## Playing
 
-`bin/realm-tui` opens the game. Start a new world (name, seed, size) or load a saved one.
+`bin/realm-tui` opens the game. Found a new world (name, seed, size) or open a saved one. Press `?` anywhere for the keys.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4` | +1, +5, +10, +50 years |
-| `5` `6` `7` `8` `9` | +100, +200, +300, +500, +1000 years |
-| `g` | God mode |
-| `Ctrl+P` / `Ctrl+Q` | Command palette / quit |
+| `1` to `9` | run 1, 5, 10, 50, 100, 200, 300, 500 or 1000 years (`s` stops at the end of the year) |
+| `←` `→`, `F1` to `F10` | switch tabs |
+| `g` | god mode: every act on the world, each a form whose choices are searchable lists |
+| `c` | create a character |
+| `e` | change the selected character (stats, traits, class, items, loves, fate) |
+| `t` | track or stop tracking the selected character |
+| `/` | search the chronicle or the people |
+| `x` | end the world |
+| `q` | back to the worlds list (the world is saved) |
 
-**Tabs:** Realms, Chronicle (filter by kind, search), Transactions (every crown's books), Economy (output, debt,
-credit, poverty, classes and assets, scrolls, monster stores, the bound dead, the richest people), Wars, People
-(search, track, edit), Tracked (your characters' journals), Map, and Books.
+**Tabs:** Realms, Chronicle (filter by kind with `f`, major only with `m`), Money (every crown's books and
+transactions), Economy (output, debt, poverty, classes and what they own, the richest people), Guild, Wars,
+People (search, sheets, the dead with `d`), Tracked (the life story of everyone you track), Map, and Books.
 
-**God mode:** wake calamities, loose monsters, send plague, famine or plenty, grant gold, start wars or impose
-peace, change governments, raise eras, break realms apart, curse houses, smite cities. Create characters to your own
-design (every stat, trait, bloodline, class and level), track them, and change anything about anyone.
+**Creating a character** works like starting one in CK3 or Oblivion: pick a people, sex, age and realm; an origin and
+an ambition; a class and level; the six stats, prowess and talent; personality traits, inborn traits and power
+bloodlines from checklists that describe each one; and every skill. `p` starts from an archetype (Warrior, Knight,
+Ranger, Thief, Wizard, Priest, Ruler-in-waiting, Scholar, Artist, Merchant, Runesmith, Hero of legend), `r` rolls a
+name, `R` randomizes everything. Opposite traits cancel each other.
 
-A world never ends until you end it. Each lives in `worlds/<name>/` with the chronicle, the books, maps, a journal
-for every tracked character, and `meta.json`, which records the seed, every advance and every act of the gods. A
-world is deterministic, so loading one replays that record and arrives at exactly the same world.
+**Lives.** Every child is born with an origin drawn from the world around them (a famine year, a plague, a war, a
+ruling house, a hero parent, a temple, a workbench, a merchant's house, a harbour, the poorest street) and, coming of
+age, forms an ambition from it: glory, wealth, knowledge, faith, power, love, a quiet home, or vengeance on whoever
+orphaned them. The ambition steers what they do, and fulfilling it makes them content. Tracked characters keep their
+own life story.
+
+A world never ends until you end it. Each lives in `worlds/<name>/` with the chronicle, the books, maps, and
+`meta.json`, which records the seed, every run of years and every act of the gods. A world is deterministic, so
+opening one replays that record and arrives at exactly the same world.
 
 ## Running without the interface
 
 ```
-python3 -m realm_of_ages --years 1000 --seed 7 --dir my-run
+target/release/ageforge run --years 1000 --seed 7 --dir my-run
 ```
 
 Options: `--years`, `--seed`, `--width`/`--height` (default 480 x 270), `--dir`, `--fresh`. A run writes the
-chronicle, the books, a map every century, `log.csv` every decade and `calibration.md`, and picks up where it left
-off when run again on the same `--dir`.
+chronicle, the books, a map every century and `calibration.md`, and picks up where it left off when run again on the
+same `--dir`.
 
 ## Measured against history
 
@@ -106,16 +118,17 @@ forced loans, the share of people on the land, poverty, the classes, and how wea
 
 ## Layout
 
-`core/` is the world, in Rust: `state.rs` holds it and founds it, `world.rs` runs the year and is what Python sees,
-and each system has its module (`climate`, `economy`, `stewardship`, `populace`, `dynasty`, `titles`, `civics`,
-`governance`, `war`, `sea`, `court`, `heart`, `opinion`, `crafts`, `society`, `power`, `monsters`, `ecology`,
-`heroes`, `wardens`, `legends`, `beasts`, `bending`, `shinobi`). `export.rs` hands Python a snapshot and `godmode.rs`
-takes the gods' acts. `core/gen_tables.py` generates `tables.rs` from the Python tables, so both read one source.
+`core/` is the world: `state.rs` holds it and founds it, `engine.rs` seeds it and runs its years, and each system has
+its module (`climate`, `economy`, `stewardship`, `populace`, `dynasty`, `titles`, `civics`, `governance`, `war`, `sea`,
+`court`, `heart`, `opinion`, `crafts`, `society`, `power`, `monsters`, `ecology`, `heroes`, `wardens`, `legends`,
+`beasts`, `bending`, `shinobi`, `works`, `lives`). `godmode.rs` takes the gods' acts.
 
-`realm_of_ages/` is the game: `tui` the interface, `session` a world in play, `bridge` the snapshot as the screens
-read it, `godmode` the acts, `output` the books and maps, `events` the chronicle's kinds. The Python simulation
-modules (`world.py` and the systems it runs) are the reference engine the Rust world was ported from and checked
-against; `core/PORT.md` has the method, the numbers and the bugs the port found.
+`game/` is the game: `ui.rs` the terminal interface, `forms.rs` its forms and searchable lists, `god.rs` god mode, the
+creator and the editor, `session.rs` a world in play, `sheet.rs` character sheets and the tabs' tables, `books.rs`
+the books, `map.rs` the maps, `events.rs` the chronicle's kinds.
+
+`realm_of_ages/` is the original Python engine, kept as the reference the Rust world was ported from and checked
+against (`core/PORT.md` has the method, the numbers and the bugs the port found). The game does not use it.
 
 ## License
 

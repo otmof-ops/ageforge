@@ -112,8 +112,10 @@ impl State {
             let natured = 10.0 * p("content") - if c.has_trait("ambitious") && status < 10.0 { 10.0 } else { 0.0 } + 5.0 * p("gregarious")
                 - if c.has_trait("arrogant") && status < 10.0 { 5.0 } else { 0.0 };
             let mad = c.coping.contains(&"mad");
+            // what they set out to be: a life that got there is content, one running out without it is not (lives.rs)
+            let dream = if c.ambition_met.is_some() { 15.0 } else if !c.ambition.is_empty() && c.age(y) as f64 > c.life * 0.7 { -10.0 } else { 0.0 };
             let target = loved.min(45.0) + lover + status + natured + if c.pet.is_some() { 10.0 } else { 0.0 } - c.grief
-                - 15.0 * stress_level(c) as f64 - if mad { 20.0 } else { 0.0 };
+                - 15.0 * stress_level(c) as f64 - if mad { 20.0 } else { 0.0 } + dream;
             let ease = 15.0 + if c.happy > 20.0 { 10.0 } else { 0.0 } + 6.0 * c.coping.len() as f64;
             let c = &mut self.chars[i];
             c.happy += 0.3 * (target.clamp(-100.0, 100.0) - c.happy);

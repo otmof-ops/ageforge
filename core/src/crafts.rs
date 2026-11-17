@@ -58,6 +58,7 @@ impl State {
     pub fn new_item(&mut self, it: Item) -> usize { self.items.push(it); self.items.len() - 1 }
 
     pub fn give_item(&mut self, c: usize, it: usize, quiet: bool) {
+        if self.items[it].rarity >= 3 { let lb = self.items[it].label(); self.life(c, "heroes", format!("Comes to bear {lb}.")); }
         self.chars[c].items.push(it);
         self.items[it].bearers.push(c);
         let mut items = std::mem::take(&mut self.chars[c].items);
@@ -161,8 +162,10 @@ impl State {
                     let cc = &self.chars[c];
                     cc.profession.is_none() && !cc.hero && cc.adult(y) && cc.ruled.is_none() && cc.father != NONE && self.chars[cc.father].profession == Some(pname)
                 });
+                let kin = kin.map(|c| (c, true)).or_else(|| self.chosen_trade(&members, pname, y).map(|c| (c, false)));
                 let (c, why) = match kin {
-                    Some(c) => (c, Some(format!("takes up the trade of {}", self.chars[self.chars[c].father].name))),
+                    Some((c, true)) => (c, Some(format!("takes up the trade of {}", self.chars[self.chars[c].father].name))),
+                    Some((c, false)) => (c, Some(format!("becomes a {pname}, as they always meant to"))),
                     None => {
                         let age = ADULT[self.realms[f].people] as i64 + self.rng.integers(0, 15);
                         let c = self.make_character(f, y - age, None, NONE, NONE, NONE);
@@ -172,6 +175,7 @@ impl State {
                     }
                 };
                 self.chars[c].profession = Some(pname);
+                self.life(c, "economy", format!("Takes up the trade of {pname}."));
                 for &s in prim { let add = self.rng.integers(20, 40) as f64; self.chars[c].skills[s] = (self.chars[c].skills[s] + add).min(100.0); }
                 if pname == "tamer" && !self.chars[c].has(gene("beastspeaker")) { self.chars[c].genetic.push(gene("beastspeaker")); }
                 if let Some(w) = why { let t = format!("{} {w}.", self.who(c)); self.say(t, true); }
@@ -271,7 +275,34 @@ impl State {
         }
         let heir = self.heir_of(c);
         let k = self.chars[c].realm;
-        let _ = k;
+        // what was only kept for a child goes on to that child (or their next guardian), not to the keeper's heir
+        let (kept, items): (Vec<usize>, Vec<usize>) = items.into_iter().partition(|&i| self.items[i].held_for != NONE && self.chars[self.items[i].held_for].alive);
+        for &i in &items { self.items[i].held_for = NONE; self.items[i].keeper = NONE; }
+        for it in kept {
+            let kid = self.items[it].held_for;
+            if self.chars[kid].adult(self.year) { self.items[it].held_for = NONE; self.items[it].keeper = NONE; self.give_item(kid, it, true); continue; }
+            let g = self.guardian_of(kid, c);
+            self.items[it].keeper = g;
+            if g != NONE { self.chars[g].items.push(it); } else if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); }
+        }
+        if items.is_empty() { return; }
+        let best = *items.iter().max_by_key(|&&i| self.items[i].rarity).unwrap();
+        // a child heir does not carry their inheritance: a guardian keeps it until they come of age
+        if heir != NONE && !self.chars[heir].adult(self.year) {
+            let g = self.guardian_of(heir, c);
+            for &it in &items {
+                self.items[it].held_for = heir;
+                self.items[it].keeper = g;
+                self.chars[heir].in_trust.push(it);
+                if g != NONE { self.chars[g].items.push(it); } else if k < self.realms.len() && !self.realms[k].extinct { self.realms[k].treasury.push(it); }
+            }
+            if self.items[best].rarity >= 4 {
+                let kn = if g != NONE { self.who(g) } else { "the crown".into() };
+                let t = format!("{} passes from {} to their heir {}, a child; {kn} keeps it until they come of age.", self.items[best].label(), self.chars[c].name, self.chars[heir].name);
+                self.say(t, true);
+            }
+            return;
+        }
         if heir != NONE {
             for &it in &items { self.give_item(heir, it, true); }
             if self.items[best].rarity >= 4 {

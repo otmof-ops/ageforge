@@ -275,6 +275,8 @@ impl State {
             let best = (0..self.chars[c].skills.len()).max_by(|&a, &b| self.chars[c].skills[a].partial_cmp(&self.chars[c].skills[b]).unwrap());
             self.chars[c].trained_in = best;
         }
+        self.choose_ambition(c);
+        if !self.chars[c].in_trust.is_empty() { self.take_up_trust(c); }
         if !Self::marked(&self.chars[c]) { return; }
         self.chars[c].renown += 80.0 + 25.0 * years as f64;
         let spec = self.chars[c].trained_in.map(|s| SKILLS[s]).unwrap_or("Blade");

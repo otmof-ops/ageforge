@@ -1,16 +1,11 @@
 //! The world, owned by Rust; Python reads it for the screen and the books.
 
-use std::collections::HashSet;
 
 use numpy::{IntoPyArray, PyArray2};
 use pyo3::prelude::*;
-use std::time::Instant;
 use pyo3::types::PyDict;
 
-use crate::geography::make_world;
-use crate::grid::Grid;
 use crate::people::NONE;
-use crate::rng::Pcg64;
 use crate::state::State;
 use crate::tables::*;
 
@@ -27,127 +22,13 @@ fn opt(x: usize) -> Option<usize> {
     if x == NONE { None } else { Some(x) }
 }
 
-/// Add the time since `t` to a phase's running total.
-fn tick(times: &mut Vec<(&'static str, f64)>, name: &'static str, t: Instant) {
-    let d = t.elapsed().as_secs_f64();
-    match times.iter_mut().find(|x| x.0 == name) { Some(x) => x.1 += d, None => times.push((name, d)) }
-}
-
-impl World {
-    /// Run the world forward by whole years, in the Python engine's order.
-    fn run_years(&mut self, years: i64) {
-        for _ in 0..years {
-
-            let st = &mut self.st;
-            st.rebuild_living();
-            st.year += 1;
-            { let t = Instant::now(); st.town_distance(); tick(&mut st.phase_times, "town_distance", t); }
-            { let t = Instant::now(); self.compute_territory(); tick(&mut self.st.phase_times, "territory", t); }
-            let st = &mut self.st;
-            { let t = Instant::now(); st.realm_resources(); tick(&mut st.phase_times, "realm_resources", t); }
-            { let t = Instant::now(); st.weather_year(); tick(&mut st.phase_times, "weather_year", t); }
-            { let t = Instant::now(); st.land_year(); tick(&mut st.phase_times, "land_year", t); }
-            { let t = Instant::now(); st.expand(); tick(&mut st.phase_times, "expand", t); }
-            { let t = Instant::now(); st.refresh_stats(); tick(&mut st.phase_times, "refresh_stats", t); }
-            { let t = Instant::now(); st.dynasty_year(); tick(&mut st.phase_times, "dynasty_year", t); }
-            { let t = Instant::now(); st.govern_year(); tick(&mut st.phase_times, "govern_year", t); }
-            { let t = Instant::now(); st.youth_year(); tick(&mut st.phase_times, "youth_year", t); }
-            { let t = Instant::now(); st.titles_year(); tick(&mut st.phase_times, "titles_year", t); }
-            { let t = Instant::now(); st.civics_year(); tick(&mut st.phase_times, "civics_year", t); }
-            { let t = Instant::now(); st.courts_and_people_year(); tick(&mut st.phase_times, "courts_and_people_year", t); }
-            { let t = Instant::now(); st.opinion_year(); tick(&mut st.phase_times, "opinion_year", t); }
-            { let t = Instant::now(); st.meters_year(); tick(&mut st.phase_times, "meters_year", t); }
-            { let t = Instant::now(); st.hearts_year(); tick(&mut st.phase_times, "hearts_year", t); }
-            { let t = Instant::now(); st.statecraft_year(); tick(&mut st.phase_times, "statecraft_year", t); }
-            { let t = Instant::now(); st.trade_year(); tick(&mut st.phase_times, "trade_year", t); }
-            { let t = Instant::now(); st.money_year(); tick(&mut st.phase_times, "money_year", t); }
-            { let t = Instant::now(); st.manage_year(); tick(&mut st.phase_times, "manage_year", t); }
-            { let t = Instant::now(); st.arcana_year(); tick(&mut st.phase_times, "arcana_year", t); }
-            { let t = Instant::now(); st.moods_year(); tick(&mut st.phase_times, "moods_year", t); }
-            { let t = Instant::now(); st.plague_year(); tick(&mut st.phase_times, "plague_year", t); }
-            { let t = Instant::now(); st.armies_year(); tick(&mut st.phase_times, "armies_year", t); }
-            { let t = Instant::now(); st.spawn_specialists(); tick(&mut st.phase_times, "spawn_specialists", t); }
-            { let t = Instant::now(); st.specialists_year(); tick(&mut st.phase_times, "specialists_year", t); }
-            { let t = Instant::now(); st.guilds_year(); tick(&mut st.phase_times, "guilds_year", t); }
-            { let t = Instant::now(); st.crime_year(); tick(&mut st.phase_times, "crime_year", t); }
-            { let t = Instant::now(); st.religion_year(); tick(&mut st.phase_times, "religion_year", t); }
-            { let t = Instant::now(); st.shinobi_year(); tick(&mut st.phase_times, "shinobi_year", t); }
-            { let t = Instant::now(); st.bending_year(); tick(&mut st.phase_times, "bending_year", t); }
-            { let t = Instant::now(); st.sea_year(); tick(&mut st.phase_times, "sea_year", t); }
-            { let t = Instant::now(); st.beasts_year(); tick(&mut st.phase_times, "beasts_year", t); }
-            { let t = Instant::now(); st.legends_year(); tick(&mut st.phase_times, "legends_year", t); }
-            { let t = Instant::now(); st.ecology_year(); tick(&mut st.phase_times, "ecology_year", t); }
-            { let t = Instant::now(); st.dungeons_year(); tick(&mut st.phase_times, "dungeons_year", t); }
-            { let t = Instant::now(); st.monster_year(); tick(&mut st.phase_times, "monster_year", t); }
-            { let t = Instant::now(); st.gates_year(); tick(&mut st.phase_times, "gates_year", t); }
-            let t = Instant::now(); let war_power = st.borders_and_diplomacy_with(true); tick(&mut st.phase_times, "borders_and_diplomacy_with", t);
-            { let t = Instant::now(); st.events_and_blight(); tick(&mut st.phase_times, "events_and_blight", t); }
-            let t = Instant::now(); let hero_power = st.heroes_act(); tick(&mut st.phase_times, "heroes_act", t);
-            let t = Instant::now(); let won = st.frontier_year(war_power, hero_power); tick(&mut st.phase_times, "frontier_year", t);
-            { let t = Instant::now(); st.spawn_monsters(); tick(&mut st.phase_times, "spawn_monsters", t); }
-            { let t = Instant::now(); st.raids(); tick(&mut st.phase_times, "raids", t); }
-            { let t = Instant::now(); st.bounties_year(); tick(&mut st.phase_times, "bounties_year", t); }
-            { let t = Instant::now(); st.guild_year(); tick(&mut st.phase_times, "guild_year", t); }
-            { let t = Instant::now(); st.heroes_resolve(&won); tick(&mut st.phase_times, "heroes_resolve", t); }
-            { let t = Instant::now(); st.cleanup(); tick(&mut st.phase_times, "cleanup", t); }
-            { let t = Instant::now(); st.spawn_heroes(); tick(&mut st.phase_times, "spawn_heroes", t); }
-            { let t = Instant::now(); st.works_year(); tick(&mut st.phase_times, "works_year", t); }
-            { let t = Instant::now(); st.settle_books(); tick(&mut st.phase_times, "settle_books", t); }
-        }
-    }
-
-    pub fn compute_territory(&mut self) {
-        let st = &mut self.st;
-        let towns: Vec<(usize, usize, f64, bool)> =
-            st.towns.iter().filter(|t| t.alive).map(|t| (t.pos.0, t.pos.1, t.pop, t.capital)).collect();
-        let ids: Vec<usize> = st.towns.iter().filter(|t| t.alive).map(|t| t.id).collect();
-        let terr = &st.map.terrain;
-        let own = crate::territory_of(st.map.h, st.map.w, |r, c| terr.at(r, c) == OCEAN, &towns);
-        st.owner = Grid { h: st.map.h, w: st.map.w, v: own.into_iter().map(|k| if k < 0 { -1 } else { ids[k as usize] as i64 }).collect() };
-    }
-}
-
 #[pymethods]
 impl World {
     /// A new world. `state` and `inc` are NumPy's PCG64 state for the seed (Python passes
     /// default_rng(seed).bit_generator.state), so seeds mean the same thing in both engines.
     #[new]
     fn new(width: usize, height: usize, state: u128, inc: u128) -> Self {
-        let mut rng = Pcg64::from_state(state, inc);
-        let map = make_world(height, width, &mut rng, 0.33);
-        let (h, w) = (height, width);
-        // as world.Realm: the four first rows take the peoples' table (indexed by realm id, see PORT.md "Python bugs")
-        let mut relation = vec![vec![0.0; 4]; 4];
-        for i in 0..4 { for j in 0..4 { relation[i][j] = BASE_REL[i][j] + rng.normal(0.0, 8.0); } }
-        for i in 0..4 { for j in 0..i { let m = (relation[i][j] + relation[j][i]) / 2.0; relation[i][j] = m; relation[j][i] = m; } }
-        let st = State { year: 0, phase_times: vec![], living: vec![], deep_sea: vec![], works: vec![], monument_works: vec![], rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
-                         realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
-                         owner: Grid::new(h, w, -1), relation, war: vec![], truce: vec![], duchies: Default::default(),
-                         ktitles: Default::default(), breakaways: vec![], wars: vec![], war_since: vec![], weariness: vec![], armies: vec![],
-                         next_army: 0, war_log: vec![], battles_fought: vec![], sieges_won: 0, people_peak: [0; 4], recent_decl: vec![], avenge_goal: (NONE, NONE, NONE), items: vec![], monsters: vec![], guilds_soc: vec![], religions: vec![], eco: crate::ecology::Ecology::empty(), town_dist: Grid::new(h, w, 1e9),
-                         sovereign_line: vec![], calamity_log: vec![], last_cal: vec![], gates: None, gate_history: vec![], dungeon_log: vec![], slain: 0, god_harvest: vec![],
-                         hero_guilds: (0..4).map(crate::heroes::HeroGuild::new).collect(), acted: vec![], people_tier: [0; 4], world_tier: 3,
-                         tier_events: vec![], rites: vec![], hall: Default::default(), myths: vec![], curses: vec![], cycles: vec![], materials: vec![],
-                         watch: vec![], corrupted: Grid::new(h, w, false), books: vec![], ledger: Default::default(), tx: vec![], tribes: vec![], concord: NONE, concord_next: 0, concord_waiting_child: false,
-                         concord_line: vec![], clans: vec![], clan_rivalry: vec![], clan_war: vec![], clan_truce: vec![], first_clan: NONE, havens: vec![],
-                         pirates: vec![], pirate_king: NONE, pirate_kings: vec![], piracy: vec![], sea_terror: vec![], naval_battles: vec![], dragon_riders: vec![], merges: vec![], item_names: Default::default(), greatest: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
-                         bankruptcies: vec![], risings: vec![], epidemics: vec![], last_pandemic: -999, last_plague: -999, log: vec![],
-                         climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
-                         cultures: (0..4).map(crate::people::Culture::new).collect(),
-                         famines: vec![], migrants: 0.0, grain_moved: 0.0 };
-        let mut world = World { st };
-        world.st.place_resources();
-        world.st.setup_ecology();
-        world.st.place_ruins();
-        world.st.place_capitals(8);
-        world.compute_territory();
-        world.st.grow_tables();
-        world.st.found_guilds();
-        world.st.found_faiths();
-        world.st.found_clans();
-        world.st.found_tribes();
-        world.st.climate = crate::climate::Climate::setup(&world.st.map.terrain, &mut world.st.rng);
-        world
+        World { st: State::new_world(width, height, state, inc) }
     }
 
     #[getter]
@@ -218,7 +99,7 @@ impl World {
 
     /// Run the world forward. The interpreter lock is released while it runs, so a screen stays live.
     fn step(&mut self, py: Python<'_>, years: i64) {
-        py.allow_threads(|| self.run_years(years))
+        py.allow_threads(|| self.st.run_years(years))
     }
 
     /// Seconds spent in each phase of the year since the world began, slowest first.
@@ -281,7 +162,11 @@ impl World {
 
     /// An act of the gods (see godmode.rs); returns what the chronicle says, or a new character's id.
     #[pyo3(signature = (act, args))]
-    fn god(&mut self, act: &str, args: &Bound<'_, PyDict>) -> PyResult<String> { self.st.god_act(act, args) }
+    fn god(&mut self, py: Python<'_>, act: &str, args: &Bound<'_, PyDict>) -> PyResult<String> {
+        let text: String = py.import("json")?.call_method1("dumps", (args,))?.extract()?;
+        let a: crate::godmode::Args = serde_json::from_str(&text).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        self.st.god_act(act, &a).map_err(pyo3::exceptions::PyValueError::new_err)
+    }
 
     /// Each people's hero guild: (hunts, hunt wins, deeds chosen so far by action).
     fn hero_guilds(&self) -> Vec<(u32, u32, Vec<u32>)> { self.st.hero_guilds.iter().map(|g| (g.hunts, g.hunt_wins, g.acts.to_vec())).collect() }

@@ -1,6 +1,7 @@
 //! NumPy's PCG64 (XSL-RR 128/64), stepped exactly as numpy.random.default_rng steps it, so Rust and Python can
 //! hand one generator back and forth. `random()` is `(next_u64 >> 11) * 2^-53`, as in NumPy.
 
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 const MULT: u128 = (2549297995355413924u128 << 64) | 4865540595714422341u128;
@@ -26,6 +27,7 @@ impl Pcg64 {
 }
 
 /// n draws of `random()` from the given state; returns the draws and the state after them (for testing parity).
+#[cfg(feature = "python")]
 #[pyfunction]
 pub fn pcg64_doubles(state: u128, inc: u128, n: usize) -> (Vec<f64>, u128) {
     let mut g = Pcg64 { state, inc };

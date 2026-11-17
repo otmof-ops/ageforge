@@ -28,6 +28,11 @@ impl State {
                 match kl.iter_mut().find(|x| x.0 == kind) { Some(x) => if pts * 0.5 > x.1 { x.1 = pts * 0.5 }, None => kl.push((kind, pts * 0.5)) }
             }
         }
+        let why = cause.clone();
+        self.life(cid, "lives", format!("Dies, aged {}: {why}.", self.chars[cid].age(y)));
+        let sp = self.chars[cid].spouse;
+        if sp != NONE && self.chars[sp].alive { let n = self.chars[cid].name.clone(); self.life(sp, "heart", format!("Their spouse, {n}, {why}.")); }
+        self.on_parent_death(cid, by);
         self.heart_on_death(cid, by);
         if self.chars[cid].hero { let p = self.chars[cid].people; self.hero_guilds[p].deaths_total += 1; }
         let kh = if by != NONE { self.chars[by].house } else { NONE };
@@ -161,6 +166,10 @@ impl State {
             let house = hs.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).map(|x| x.1).unwrap_or(NONE);
             let pid = if house != NONE && self.chars[dad].house == house { self.chars[dad].realm } else { self.chars[m].realm };
             let kid = self.make_character(pid, y, None, dad, m, house);
+            self.assign_origin(kid);
+            let (kn, ks) = (self.chars[kid].name.clone(), if self.chars[kid].female { "daughter" } else { "son" });
+            self.life(dad, "heart", format!("A {ks}, {kn}, is born."));
+            self.life(m, "heart", format!("A {ks}, {kn}, is born."));
             self.heart_on_birth(kid);
             self.born_bender(kid);
             self.legends_on_birth(kid);
@@ -217,6 +226,9 @@ impl State {
     fn marry(&mut self, a: usize, b: usize) {
         self.chars[a].spouse = b;
         self.chars[b].spouse = a;
+        let (an, bn) = (self.who(a), self.who(b));
+        self.life(a, "heart", format!("Marries {bn}."));
+        self.life(b, "heart", format!("Marries {an}."));
         self.heart_on_marriage(a, b);
     }
 
@@ -308,7 +320,7 @@ impl State {
                 && (cc.house == house || cc.renown > 150.0 || c == regent)
         }).filter(|&c| self.chars[c].vendettas.iter().any(|v| v.0 == r) || self.opinion(c, r) < -20.0).collect();
         for p in plotters {
-            let chance = (0.001 * (self.chars[p].attr(3, y) - 0.6 * guard - 4.0).max(0.0)).min(0.01);
+            let chance = (0.001 * (self.chars[p].attr(3, y) - 0.6 * guard - 4.0).max(0.0)).min(0.01) * self.ambition_bias(p, "plot");
             if self.rng.random() < chance {
                 let text = format!("{} is murdered. The court whispers the name of {}.", self.who(r), self.who(p));
                 self.say(text, false);

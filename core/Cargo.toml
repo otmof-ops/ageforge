@@ -2,20 +2,20 @@
 name = "ageforge_core"
 version = "0.1.0"
 edition = "2021"
-description = "The heavy yearly work of the Realm of Ages simulation, as a Python extension module."
+description = "The Realm of Ages world: every system that runs it, year by year."
 license = "BSD-3-Clause"
 publish = false
 
 [lib]
 name = "_core"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# the Python extension module (realm_of_ages._core), used by the reference engine's checks
+python = ["dep:pyo3", "dep:numpy"]
 
 [dependencies]
-pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
-numpy = "0.23"
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-debug = "line-tables-only"
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"], optional = true }
+numpy = { version = "0.23", optional = true }
+serde = "1"
+serde_json = "1"

@@ -1,50 +1,58 @@
-//! The heavy yearly work of the Realm of Ages simulation, moved out of Python one system at a time.
+//! The Realm of Ages world. `engine` founds and runs it; the game (`game/`) plays it; with the `python` feature it is
+//! also the Python extension `realm_of_ages._core`, which the reference engine's checks use.
 //!
 //! Every function here has a Python twin it must agree with exactly; the differential tests run both from the
 //! same world and compare. Random numbers come from `rng::Pcg64`, the same generator NumPy's `default_rng` uses,
 //! with its state passed in and handed back, so a system can move across without changing the world's history.
 
+#[cfg(feature = "python")]
 use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, IntoPyArray};
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
-mod beasts;
-mod bending;
-mod civics;
-mod climate;
-mod court;
-mod crafts;
-mod economy;
-mod legends;
-mod wardens;
-mod heroes;
-mod monsters;
-mod ecology;
-mod dynasty;
-mod export;
-mod geography;
-mod godmode;
-mod governance;
-mod heart;
-mod grid;
-mod opinion;
-mod people;
-mod populace;
-mod power;
-mod sea;
-mod shinobi;
-mod society;
-mod state;
-mod stewardship;
-mod titles;
-mod war;
-mod rng;
-mod tables;
-mod works;
-mod world;
+pub mod beasts;
+pub mod bending;
+pub mod civics;
+pub mod climate;
+pub mod court;
+pub mod crafts;
+pub mod economy;
+pub mod legends;
+pub mod wardens;
+pub mod heroes;
+pub mod monsters;
+pub mod ecology;
+pub mod dynasty;
+#[cfg(feature = "python")]
+pub mod export;
+pub mod geography;
+pub mod godmode;
+pub mod governance;
+pub mod heart;
+pub mod grid;
+pub mod opinion;
+pub mod people;
+pub mod populace;
+pub mod power;
+pub mod sea;
+pub mod shinobi;
+pub mod society;
+pub mod state;
+pub mod stewardship;
+pub mod titles;
+pub mod war;
+pub mod rng;
+pub mod tables;
+pub mod works;
+pub mod lives;
+#[cfg(feature = "python")]
+pub mod world;
+pub mod engine;
 
 /// Which town's territory each map cell falls in: every town casts influence over a disc whose radius grows with
 /// its population, stronger near the town and for a seat; the strongest influence takes the cell (the earlier town
 /// on a tie). Sea cells are taken only within two leagues of a town. Returns the owner grid (-1 for no one).
+#[cfg(feature = "python")]
 #[pyfunction]
 fn territory<'py>(
     py: Python<'py>,
@@ -101,6 +109,7 @@ pub fn bending_title(s: &str) -> String {
     s.split(' ').map(|w| { let mut c = w.chars(); match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() } }).collect::<Vec<_>>().join(" ")
 }
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(territory, m)?)?;
