@@ -47,6 +47,21 @@ A slice is done when its numbers sit inside the Python engine's own seed-to-seed
 
 The Python engine stays in the tree as the reference the port is checked against; the game no longer runs it.
 
+## Speed in long worlds
+
+A world grows: seed 4 reaches 1,700 towns by year 400 and 230,000 characters (living and dead) by year 1000.
+`World.phase_times()` gives the seconds spent in each phase of the year, so the slow part is measured, not guessed.
+
+- `State.living` holds the ids of the living in id order, rebuilt each year and appended at each birth. Scans that
+  walked every character ever born, many once per realm, walk it instead. The order is unchanged, so the world is
+  unchanged: the chronicle of 300 years hashes identically before and after. Check any change like this the same way.
+- The sea works out each realm's ports once per pass, not once per realm pair or per monster per realm.
+- The snapshot sends the forgotten dead as shades; a shade fetches its full record (`World.character_full`) the
+  first time a screen asks for more than it holds.
+
+On seed 4: years 450-500 took 31 s and take 10 s; the mirror at year 700 took 13 s and 8.4 GB and takes 5 s and
+2.3 GB; the dynasties book took 26 s and takes 0.5 s.
+
 ## Python bugs found while porting
 
 Kept in the Rust engine for now so the two can be compared; to be fixed in both once the port is checked.
