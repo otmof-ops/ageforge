@@ -705,6 +705,14 @@ def sheet(c, realm):
     leg = legacy_lines(realm, c)
     if leg:
         lines.append("- **Legacies:** " + "; ".join(leg))
+    made = [w for w in getattr(realm, "works", []) if w.maker == c.id and w.kind != "heirloom"]
+    if made:
+        best = sorted(made, key=lambda w: -w.quality)[:5]
+        lines.append(f"- **Works ({len(made)}):** " + "; ".join(f"*{w.title}* ({w.kind}, {w.year}"
+                                                               + (", lost" if w.lost is not None else "") + ")" for w in best))
+    kept = [w for w in getattr(realm, "works", []) if w.kind == "heirloom" and w.holder == c.id and w.lost is None]
+    if kept:
+        lines.append("- **Heirlooms:** " + "; ".join(f"{w.title}" for w in kept))
     if c.legitimacy is not None:
         state = "corrupt" if c.legitimacy < 30 else "trusted" if c.legitimacy >= 70 else "accepted"
         lines.append(f"- **Governance:** legitimacy {c.legitimacy:.0f} ({state}), tyranny {c.tyranny:.0f}")

@@ -34,6 +34,7 @@ impl State {
         self.legends_on_death(cid, &cause, kh);
         let heir = self.heir_of(cid);
         self.pass_beast(cid, heir);
+        self.leave_heirloom(cid);
         self.inherit(cid, None);
         let k = self.chars[cid].realm;
         if k < self.realms.len() && self.realms[k].ruler == cid && !self.chars[cid].hero && !quiet {

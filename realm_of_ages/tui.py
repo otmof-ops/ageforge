@@ -23,7 +23,7 @@ from .session import PRESETS, Session, list_worlds
 
 SIZES = [("Small (240 x 135)", (240, 135)), ("Standard (480 x 270)", (480, 270)), ("Huge (640 x 360)", (640, 360))]
 BOOKS = ["summary.md", "realms.md", "dynasties.md", "legends.md", "myths.md", "world.md", "magic.md", "seas.md",
-         "pirates.md", "society.md", "dungeons.md", "bestiary.md", "calibration.md", "tracked.md"]
+         "pirates.md", "society.md", "works.md", "dungeons.md", "bestiary.md", "calibration.md", "tracked.md"]
 CAT_STYLE = {"god": "bold magenta", "war": "red", "politics": "yellow", "economy": "green", "people": "cyan",
              "lives": "white", "culture": "bright_blue", "heart": "bright_magenta", "magic": "magenta",
              "monsters": "bright_red", "heroes": "bright_yellow", "sea": "blue", "faith": "bright_cyan",

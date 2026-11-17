@@ -294,6 +294,7 @@ class Mirror:
         self.greatest = dict(s["greatest"])
         self.duchies = {tuple(k): v for k, v in s["duchies"].items()}
         self.ktitles = {tuple(k): v for k, v in s["ktitles"].items()}
+        self.works = [Obj(w) for w in s["works"]]
         self.op_mods = {tuple(k): [list(m) for m in v] for k, v in s["op_mods"].items()}
         self.gates = None if s["gates"] is None else dict(zip(("open", "start", "end", "lord_name", "count"), s["gates"]))
         self.worldforged_found = {it.name for it in self.items if it.rarity >= 6}

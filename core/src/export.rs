@@ -168,7 +168,7 @@ impl State {
                 "lord" => o(t.lord), "famine" => t.famine, "poverty" => t.poverty, "crowded" => t.crowded, "jobless" => t.jobless, "threat" => t.threat,
                 "income" => t.income, "real_income" => t.real_income, "granary" => t.granary, "soil" => t.soil, "colony" => t.colony,
                 "occupied_by" => o(t.occupied_by), "rising" => t.rising, "mood" => d!(py, "peasants" => t.mood_p.unwrap_or(10.0), "burghers" => t.mood_b),
-                "crime" => t.crime, "faith" => t.faith.clone(), "bld" => { let b = PyDict::new(py); for (i, &lv) in t.bld.iter().enumerate() { if lv > 0 { b.set_item(crate::stewardship::BUILDINGS[i].0, lv)?; } } b },
+                "crime" => t.crime, "housing" => t.housing, "food_prod" => t.food_prod, "faith" => t.faith.clone(), "bld" => { let b = PyDict::new(py); for (i, &lv) in t.bld.iter().enumerate() { if lv > 0 { b.set_item(crate::stewardship::BUILDINGS[i].0, lv)?; } } b },
                 "magic" => t.magic, "guard" => t.guard, "garrison" => t.garrison, "game" => t.game, "duchy" => t.duchy))?;
         }
         s.set_item("towns", towns)?;
@@ -293,6 +293,11 @@ impl State {
             for (about, v) in by { op.set_item((c.id, about), v)?; }
         }
         s.set_item("op_mods", op)?;
+        let works: Vec<Bound<PyDict>> = self.works.iter().map(|w| d!(py, "id" => w.id, "kind" => w.kind, "title" => &w.title, "maker" => w.maker,
+            "year" => w.year, "subject" => &w.subject, "quality" => w.quality, "realm" => o(w.realm), "town" => o(w.town), "house" => o(w.house),
+            "holder" => o(w.holder), "hero" => o(w.hero), "sector" => crate::works::sector_name(w.sector), "copies" => w.copies.clone(),
+            "lost" => w.lost, "history" => w.history.clone())).collect();
+        s.set_item("works", works)?;
         let ledger = PyDict::new(py);
         for ((y, k), row) in self.ledger.range((since, 0)..) { let r = PyDict::new(py); for (c, v) in row { r.set_item(*c, *v)?; } ledger.set_item((*y, *k), r)?; }
         s.set_item("ledger", ledger)?;

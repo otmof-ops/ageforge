@@ -30,6 +30,13 @@ tributaries, and great decisions that forge empires.
 **War.** Armies that march on the map, sieges, field battles, levies, garrisons and regiments, fleets and naval
 battles, colonies across the sea, and pirates with their own careers.
 
+**Art, books, heirlooms and monuments.** Only the gifted make them: the artistic trait is about one birth in seventy and
+runs in families. Their paintings, carvings, tapestries, songs, chronicles, epics and treatises record what the world
+really lived through, change hands, are copied, carried off as plunder, burned with their towns and found again in
+ruins. Treatises teach their trade wherever a copy is kept; an epic carries a hero's name into their line's legacy.
+The great leave heirlooms that pass from hand to hand in their house. Rich realms raise monuments to their victories
+and their dead, a decade's work paid out of revenue, and the conquered sometimes pull them down.
+
 **An economy that works the way economies do.** Every town has jobs in farming, mining, crafts, trade, the clergy,
 service and the arcane; skill comes from a people's gifts, their learning and the masters who live there. Lower,
 middle and upper classes own land, houses, stock and coin, and poverty is measured against what bread and a roof

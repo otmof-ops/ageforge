@@ -20,7 +20,7 @@ RULES = [
     ("monsters", r"dragon|troll|wraith|demon|calamity|clutch|wyrm|beast|sinks back"),
     ("heroes", r"slays|\bdelves?\b|the delver|bottom of|floors? |\bhero|artifact|relic|dungeon|masters |level"),
     ("faith", r"faith|proclaims|prophet|religion|holy war|temple|heresy"),
-    ("culture", r" learn |tradition|lifestyle|golden age|dark age|new era|saga|thinkers|old ways"),
+    ("culture", r" learn |tradition|lifestyle|golden age|dark age|new era|saga|thinkers|old ways|masterwork|monument|finishes .* \(|pull down|brings .* out of"),
     ("lives", r"died of|died in|is born|midwives|comes of age|aged \d+"),
     ("politics", r"crown|dynasty|faction|ultimatum|new realm|duke|duchess|council|regent|succession|throne|is no more|"
                  r" found |guildmaster|cadet branch|hook on|"

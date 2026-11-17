@@ -39,6 +39,7 @@ mod titles;
 mod war;
 mod rng;
 mod tables;
+mod works;
 mod world;
 
 /// Which town's territory each map cell falls in: every town casts influence over a disc whose radius grows with

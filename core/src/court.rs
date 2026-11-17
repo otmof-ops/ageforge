@@ -143,6 +143,7 @@ impl State {
             }
             let arts: Vec<usize> = self.realms[k].treasury.iter().chain(self.chars[r].items.iter()).copied().filter(|&i| self.items[i].rarity >= 3).collect();
             let art_g: f64 = arts.iter().map(|&i| (self.items[i].rarity as f64).powf(1.4).min(8.0)).sum();
+            let art_g = art_g + self.court_art(k);
             let ct = self.realms[k].court.as_mut().unwrap();
             let g = ct.amen.iter().sum::<u32>() as f64 * 3.5 + 2.5 * ct.pos.len() as f64 + art_g + 0.05 * (y - ct.since) as f64;
             ct.grandeur = 0.8 * ct.grandeur + 0.2 * g.min(100.0);

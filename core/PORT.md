@@ -62,6 +62,17 @@ A world grows: seed 4 reaches 1,700 towns by year 400 and 230,000 characters (li
 On seed 4: years 450-500 took 31 s and take 10 s; the mirror at year 700 took 13 s and 8.4 GB and takes 5 s and
 2.3 GB; the dynasties book took 26 s and takes 0.5 s.
 
+## Built in Rust only
+
+Systems added after the port live only in the Rust world; the Python engine has no counterpart to check them against.
+
+- `works.rs`: art, books, heirlooms and monuments, made only by the `artistic` (a new ordinary gene, 1.5% of births).
+- Housing and food strain (`economy.rs`): houses decay and are built only as fast as a town's builders, wealth and
+  timber or stone allow; crowding lowers births, raises deaths and drives people out; a harvest loses its seed grain
+  (yields of three to four and a half to one, by field rotation) and the share eaten by beasts, rats and mould before
+  anyone eats, and fertility follows what is eaten. Over 400 years on 3 seeds the world ends about half as populous,
+  with famines in their historical range (8-11 killing over 1,000).
+
 ## Python bugs found while porting
 
 Kept in the Rust engine for now so the two can be compared; to be fixed in both once the port is checked.

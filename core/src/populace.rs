@@ -113,7 +113,7 @@ impl State {
             for (tid, load) in front {
                 if !self.towns[tid].alive { continue; }
                 let s = &self.towns[tid];
-                let attack = (load * (1.0 - s.immune) * 3.0).min(0.9);
+                let attack = (load * (1.0 - s.immune) * 3.0 * (1.0 + s.crowded.min(1.0))).min(0.9);
                 let mend = (20.0 * s.arcane).min(0.3);
                 let dead = s.pop * attack * fat * (1.0 - (heal[s.realm] + mend).min(0.7));
                 let (pos, port, realm) = (s.pos, s.port, s.realm);

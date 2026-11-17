@@ -97,6 +97,9 @@ impl State {
         for c in self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.hero) { if c.items.iter().any(|&i| self.items[i].special == Some("food")) && c.realm < seed.len() { seed[c.realm] = 1.2; } }
         let god: Vec<Option<f64>> = (0..self.realms.len()).map(|k| self.god_harvest.iter().find(|g| g.0 == k && g.2 >= y).map(|g| g.1)).collect();
         let tiers: Vec<f64> = self.realms.iter().map(|k| k.realm_tier as f64).collect();
+        // grains reaped for each grain sown: about three in tribal fields, four to five once fields are rotated
+        let yield_ratio: Vec<f64> = self.cultures.iter().map(|c| 3.0 + 0.6 * c.innovations.contains("Two-Field Rotation") as u8 as f64
+            + 1.0 * c.innovations.contains("Three-Field Rotation") as u8 as f64).collect();
         for &i in &live {
             let realm_tier = tiers[self.towns[i].realm];
             let s = &mut self.towns[i];
@@ -119,6 +122,9 @@ impl State {
             let mut prod = base * s.soil * harvest * tech * magic * food_mod[s.realm] * seed[s.realm] * s.curse_mult * (1.0 + s.game) * (1.0 + rf) * occupied;
             if let Some(g) = god[s.realm] { prod *= g; }
             prod *= 0.55 + 0.45 * s.farm_fill.min(1.0);
+            // not all of a harvest is eaten: next year's seed goes back into the ground, the plough-oxen and the
+            // herds eat their share, and rats, mould and weather take more in the field and the barn
+            prod *= (1.0 - 1.0 / yield_ratio[s.culture]) * 0.85;
             s.food_prod = prod;
             s.food = prod;
         }
@@ -170,9 +176,16 @@ impl State {
             short *= 1.0 - (15.0 * s.arcane).min(0.25);
             s.granary = Some(g);
             s.famine = short;
-            let (mut b, d) = VITAL[s.culture];
+            let (mut b, mut d) = VITAL[s.culture];
             let ratio = eat / need.max(1.0);
-            b *= (1.0 + 0.3 * ((ratio - 1.0) / 2.0).clamp(0.0, 1.0)) * ((ratio - 0.95) / 0.45).clamp(0.15, 1.2);
+            // fertility follows what is eaten (after seed and losses): a fed household has its children, a lean one fewer
+            b *= (1.0 + 0.3 * ((ratio - 1.0) / 2.0).clamp(0.0, 1.0)) * ((ratio - 0.6) / 0.5).clamp(0.3, 1.1);
+            // the crowded marry late, sicken and die young: fever, filth and bad water in packed streets
+            let crowd = s.crowded.min(1.0);
+            b /= 1.0 + 0.6 * crowd;
+            d *= 1.0 + 1.0 * crowd;
+            // a lean diet kills slowly, long before outright famine: the weak, the old and the infants first
+            d *= 1.0 + 0.8 * (0.95 - ratio).clamp(0.0, 0.5);
             s.pop += s.pop * (b - d) * growth * s.lord_mod;
             s.hunger_dead = 0.0;
             if short > 0.0 {
@@ -186,6 +199,7 @@ impl State {
         }
         self.famine_news(&famine_towns);
         self.migrate(&famine_towns);
+        self.crowd_flight(&live);
     }
 
     fn famine_news(&mut self, towns: &[usize]) {
@@ -224,6 +238,23 @@ impl State {
         }
     }
 
+    /// The overcrowded leave for nearby towns with room to spare, or for the land.
+    fn crowd_flight(&mut self, live: &[usize]) {
+        let room: Vec<usize> = live.iter().copied().filter(|&t| self.towns[t].alive && self.towns[t].housing.unwrap_or(0.0) > self.towns[t].pop * 1.05).collect();
+        for &s in live {
+            let c = self.towns[s].crowded;
+            if c < 0.2 || !self.towns[s].alive { continue; }
+            let (pos, land) = (self.towns[s].pos, self.towns[s].landmass);
+            let n = self.towns[s].pop * 0.03 * c.min(1.0);
+            let near: Vec<usize> = room.iter().copied().filter(|&t| t != s && self.towns[t].landmass == land
+                && (self.towns[t].pos.0 as f64 - pos.0 as f64).hypot(self.towns[t].pos.1 as f64 - pos.1 as f64) < 25.0).take(3).collect();
+            self.towns[s].pop -= n;
+            if near.is_empty() { continue; } // no room anywhere near: they go to the land, and are lost to the towns
+            for &t in &near { self.towns[t].pop += n / near.len() as f64; }
+            self.migrants += n;
+        }
+    }
+
     /// Jobs, workers, skill and output for every town; income, wealth, walls, the classes; the idle move to work.
     fn labour_year(&mut self, terr_wealth: &[f64], res: &[Vec<(usize, u32)>]) {
         let walls_caps: Vec<u32> = (0..self.realms.len()).map(|k| self.walls_cap(k)).collect();
@@ -231,6 +262,10 @@ impl State {
         // masters teach their trade in their town; the gifted lift it (markets.masters_by_town)
         let n = self.towns.len();
         let mut teaching = vec![[0.0f64; 7]; n];
+        // books teach too: a treatise kept in a town lifts the trade it is about (works.rs)
+        let treatises = self.treatises_in();
+        // what houses are built of: a realm with timber or stone builds fast, one without builds slow and dear
+        let materials: Vec<f64> = self.realms.iter().map(|k| if k.held.iter().any(|&r| matches!(RESOURCES[r].name, "timber" | "stone" | "ancient wood")) { 1.0 } else { 0.6 }).collect();
         let mut town_gifts: Vec<Vec<&'static str>> = vec![vec![]; n];
         let sector = |p: &str| match p { "smith" | "enchanter" | "alchemist" | "shipwright" => 2, "merchant" | "captain" => 3, "priest" => 4, "thief" | "assassin" | "bandit" => 5, _ => 6 };
         let pskill = |p: &str| match p { "smith" => Some("Smithing"), "enchanter" => Some("Enchanting"), "alchemist" => Some("Alchemy"), "shipwright" => Some("Seamanship"),
@@ -311,7 +346,7 @@ impl State {
             let bld_of = [B_MILL, B_MINE, B_WORKSHOPS, B_MARKET, usize::MAX, usize::MAX, B_COLLEGE];
             for j in 0..7 {
                 let own = if bld_of[j] == usize::MAX { 0.0 } else { bl(bld_of[j]) };
-                let target = (targets[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j] + teach[j].min(0.3)).min(1.0);
+                let target = (targets[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j] + teach[j].min(0.3) + 0.03 * treatises[i][j].min(3.0)).min(1.0);
                 sk[j] += 0.06 * (target - sk[j]);
             }
             s.skill = Some(sk);
@@ -353,8 +388,18 @@ impl State {
             ];
             let th = { let t: f64 = heads.iter().sum(); if t == 0.0 { 1.0 } else { t } };
             let tshare = if gov == "republic" || gov == "administrative" { [0.8, 1.0, 0.8] } else { TAX_SHARE };
-            let mut housing = s.housing.unwrap_or(s.pop * 1.1);
-            if housing < s.pop * 1.15 { housing += 0.015 * housing; }
+            // houses age, burn and fall in; new ones are built only as fast as the town's builders, its wealth and its
+            // timber and stone allow, and they cost the town what they cost
+            let mut housing = s.housing.unwrap_or(s.pop * 1.1) * 0.988;
+            let gap = s.pop * 1.15 - housing;
+            if gap > 0.0 {
+                let means = (s.wealth / (0.5 * s.pop).max(1.0)).clamp(0.0, 1.5);
+                let builders = filled[2] / s.pop.max(1.0);
+                let rate = (0.004 + 0.02 * means + 0.15 * builders.min(0.15)) * materials[s.realm.min(materials.len() - 1)];
+                let built = gap.min(housing * rate).max(0.0);
+                housing += built;
+                s.wealth -= built * 0.04;
+            }
             s.housing = Some(housing);
             let crowd = (s.pop / housing.max(1.0) - 1.0).max(0.0);
             s.crowded = crowd;

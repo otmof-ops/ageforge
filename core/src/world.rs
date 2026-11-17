@@ -91,6 +91,7 @@ impl World {
             { let t = Instant::now(); st.heroes_resolve(&won); tick(&mut st.phase_times, "heroes_resolve", t); }
             { let t = Instant::now(); st.cleanup(); tick(&mut st.phase_times, "cleanup", t); }
             { let t = Instant::now(); st.spawn_heroes(); tick(&mut st.phase_times, "spawn_heroes", t); }
+            { let t = Instant::now(); st.works_year(); tick(&mut st.phase_times, "works_year", t); }
             { let t = Instant::now(); st.settle_books(); tick(&mut st.phase_times, "settle_books", t); }
         }
     }
@@ -119,7 +120,7 @@ impl World {
         let mut relation = vec![vec![0.0; 4]; 4];
         for i in 0..4 { for j in 0..4 { relation[i][j] = BASE_REL[i][j] + rng.normal(0.0, 8.0); } }
         for i in 0..4 { for j in 0..i { let m = (relation[i][j] + relation[j][i]) / 2.0; relation[i][j] = m; relation[j][i] = m; } }
-        let st = State { year: 0, phase_times: vec![], living: vec![], deep_sea: vec![], rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
+        let st = State { year: 0, phase_times: vec![], living: vec![], deep_sea: vec![], works: vec![], monument_works: vec![], rng, map, res_grid: Grid::new(h, w, -1), chars: vec![], houses: vec![], towns: vec![],
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
                          owner: Grid::new(h, w, -1), relation, war: vec![], truce: vec![], duchies: Default::default(),
                          ktitles: Default::default(), breakaways: vec![], wars: vec![], war_since: vec![], weariness: vec![], armies: vec![],

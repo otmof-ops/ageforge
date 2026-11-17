@@ -15,7 +15,7 @@ SKILL_LEGACY = {"Smithing": "smith", "Enchanting": "enchanter", "Alchemy": "alch
                 "Restoration": "arcane", "Conjuration": "arcane", "Illusion": "arcane", "Alteration": "arcane"}
 FAME_WORD = {"Smithing": "smith", "Enchanting": "enchanter", "Alchemy": "alchemist", "Mercantile": "merchant",
              "Speech": "speaker", "Sneak": "thief", "Security": "thief", "Pickpocket": "thief", "assassin": "assassin",
-             "shinobi": "shinobi", "bender": "bender", "prophet": "prophet"}
+             "shinobi": "shinobi", "bender": "bender", "prophet": "prophet", "artist": "artist"}
 FAME_STEPS = [(500, "known in their own country as a fine {}"), (2000, "spoken of across the land as a great {}")]
 GREATEST_AT = 5000
 

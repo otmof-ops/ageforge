@@ -74,6 +74,10 @@ pub struct State {
     pub living: Vec<usize>,
     /// Open-sea cells far from any shore, where sea monsters rise (the map's seas never change).
     pub deep_sea: Vec<(usize, usize)>,
+    /// Art, books, heirlooms and monuments (works.rs).
+    pub works: Vec<crate::works::Work>,
+    /// Monuments being built: (realm, town, designer, title, subject, quality, cost left, years stalled).
+    pub monument_works: Vec<(usize, usize, usize, String, String, f64, f64, u32)>,
     pub tribes: Vec<crate::bending::Tribe>,
     pub concord: usize,
     pub concord_next: usize,
