@@ -65,6 +65,25 @@ pub struct State {
     pub materials: Vec<crate::legends::Material>,
     pub watch: Vec<usize>,
     pub corrupted: Grid<bool>,
+    pub tribes: Vec<crate::bending::Tribe>,
+    pub concord: usize,
+    pub concord_next: usize,
+    pub concord_waiting_child: bool,
+    pub concord_line: Vec<crate::bending::ConcordLife>,
+    pub clans: Vec<crate::shinobi::Clan>,
+    pub clan_rivalry: Vec<((usize, usize), f64)>,
+    pub clan_war: Vec<((usize, usize), i64)>,
+    pub clan_truce: Vec<((usize, usize), i64)>,
+    pub first_clan: usize,
+    pub havens: Vec<crate::sea::Haven>,
+    pub pirates: Vec<usize>,
+    pub pirate_king: usize,
+    pub pirate_kings: Vec<(i64, usize)>,
+    pub piracy: Vec<f64>,
+    pub sea_terror: Vec<f64>,
+    pub naval_battles: Vec<(i64, String, String, String)>,
+    pub dragon_riders: Vec<(i64, usize, String, &'static str)>,
+    pub merges: Vec<(i64, usize, &'static str, String)>,
     pub religions: Vec<crate::people::Religion>,
     pub item_names: std::collections::HashSet<String>,
     pub greatest: Vec<(&'static str, usize)>,
@@ -180,7 +199,7 @@ impl State {
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
                                cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
                                coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0, burghers: 0.08,
-                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, faith: vec![(cu, 1.0)], lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0, threat: 0.0, raided: None, raided_by: NONE, raided_year: -99, game: 0.0, curse_mult: 1.0 });
+                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, faith: vec![(cu, 1.0)], lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0, threat: 0.0, raided: None, raided_by: NONE, raided_year: -99, game: 0.0, curse_mult: 1.0, colony: false, metropole: NONE });
         id
     }
 
@@ -311,7 +330,9 @@ impl State {
             vendettas: vec![], grief: 0.0, coping: vec![], pet: None, orientation: 0, affair: NONE, items: vec![], fame: vec![],
             bounty: 0.0, jailed_until: 0, education: None, ls_xp: 0.0, perk_list: vec![], practice: 0, tutored: 0.0, trained_in: None,
             marks: vec![], clan: NONE, element: None, last_deed: None, rite_ready: 0, peak_cr: 0.0, seal: None, merit: 0.0,
-            party: NONE, pending: None, kills: 0, beyond_ready: 0, posted: 0.0, guilds: vec![], guild_rank: None, extra: [0.0; 6], alive: true, died: None, cause: None, home: NONE,
+            party: NONE, pending: None, kills: 0, beyond_ready: 0, posted: 0.0, beast: None, merged: None, bend: vec![], high_art: None, tribe: NONE,
+            last_peace: -99, ki: 0.0, natures: vec![], sarts: vec![], srank: 0, missions: 0, pirate: false, ship: (String::new(), 0, 0), haven: 0,
+            infamy: 0.0, marque: NONE, resume: vec![], guilds: vec![], guild_rank: None, extra: [0.0; 6], alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -562,7 +583,7 @@ impl State {
                 trade_net: 0.0, partners: 0, trade_protectionist: false, last_forced: -99, last_default: -99,
                 mint_skill: 0.0, sector_boost: [0.0; 7], econ_prev_gdp: None, goods: vec![], market: vec![], treasury: vec![], soulstones: [0; 5], dragonbone: 0, potions: 0.0,
                 arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false, faith: f, persecuting: false, mods: vec![], parts: [0.0; 4], scrolls: [0.0; 11], scroll_power: 0.0,
-            top_scroll: 0, bound_share: 0.0, trade_shock: 0, dragons: 0 });
+            top_scroll: 0, bound_share: 0.0, trade_shock: 0, dragons: 0, merchants: 6.0, blockaded: 0, colonies: 0, discoveries: vec![] });
             let pop = self.rng.integers(120, 260) as f64;
             let cap = self.add_town(pid, pos, pop, true);
             let place = self.towns[cap].name.clone();

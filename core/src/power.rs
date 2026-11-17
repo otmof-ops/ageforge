@@ -157,6 +157,10 @@ impl State {
         let mut best: Vec<f64> = c.items.iter().map(|&i| self.items[i].bonus).collect();
         best.sort_by(|a, b| b.partial_cmp(a).unwrap());
         let v = (phys + mag) * (1.0 + best.iter().take(4).sum::<f64>() * m[EQUIP]);
+        let mut v = v;
+        if !c.bend.is_empty() { v += self.bend_power(c); }
+        if let Some(b) = &c.beast { v += b.2 * if b.0 == "dragon" { (0.3 + (self.year - b.3) as f64 / 40.0).min(1.0) } else { 1.0 }; }
+        if c.clan != NONE && c.ki > 0.0 { v += crate::shinobi::shinobi_power(c); }
         if hp_matters { v * (0.5 + 0.5 * c.hp / 100.0) } else { v }
     }
 

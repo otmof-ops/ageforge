@@ -271,6 +271,7 @@ impl State {
         }
         let heir = self.heir_of(c);
         let k = self.chars[c].realm;
+        let _ = k;
         if heir != NONE {
             for &it in &items { self.give_item(heir, it, true); }
             if self.items[best].rarity >= 4 {

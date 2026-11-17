@@ -100,6 +100,23 @@ pub struct Character {
     pub kills: u32,
     pub beyond_ready: i64,
     pub posted: f64,
+    pub beast: Option<(&'static str, String, f64, i64, f64)>,  // kind, name, power, since, life
+    pub merged: Option<&'static str>,
+    pub bend: Vec<(usize, f64)>,                               // (element, level)
+    pub high_art: Option<&'static str>,
+    pub tribe: usize,
+    pub last_peace: i64,
+    pub ki: f64,
+    pub natures: Vec<(usize, u8)>,                             // (nature, level)
+    pub sarts: Vec<(usize, u8)>,                               // (art, level)
+    pub srank: usize,
+    pub missions: u32,
+    pub pirate: bool,
+    pub ship: (String, usize, i64),                            // name, tier, crew
+    pub haven: usize,
+    pub infamy: f64,
+    pub marque: usize,
+    pub resume: Vec<String>,
     pub guilds: Vec<usize>,
     pub guild_rank: Option<&'static str>,
     pub extra: [f64; 6],                  // legacy, class effects and perks on the six stats, refreshed yearly
@@ -222,6 +239,8 @@ pub struct Town {
     pub raided_year: i64,
     pub game: f64,
     pub curse_mult: f64,
+    pub colony: bool,
+    pub metropole: usize,
 }
 
 pub struct Epidemic {
@@ -340,6 +359,10 @@ pub struct Realm {
     pub bound_share: f64,
     pub trade_shock: i64,
     pub dragons: u32,
+    pub merchants: f64,
+    pub blockaded: i64,
+    pub colonies: u32,
+    pub discoveries: Vec<(i64, i32, usize)>,
 }
 
 impl Realm {

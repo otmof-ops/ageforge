@@ -107,7 +107,7 @@ strs("PERSONALITY", pers)
 out.append("pub const PERSONALITY_FX: [[f64; 6]; %d] = [%s];" % (len(pers), ", ".join(
     "[" + ", ".join(f(data.PERSONALITY_FX.get(t, {}).get(a, 0) + data.PERSONALITY_FX.get(t, {}).get("all", 0))
                     for a in ATTRS) + "]" for t in pers)))
-genes = list(data.GENETIC) + ["half-" + a for a in data.ADJ]
+genes = list(data.GENETIC) + ["half-" + a for a in data.ADJ] + [data2.ELEMENT_GENE[e] for e in data2.ELEMENTS] + list(data2.SHINOBI_EYES)
 strs("GENETIC", genes)
 def gfx(t, key):
     return data.GENETIC.get(t, {}).get(key, 1.0 if key == "life" else 0.0)
@@ -241,6 +241,27 @@ out.append("pub const DUNGEON_KINDS: [(&str, &[&str], &[&str]); %d] = [%s];" % (
 # ---- legends
 strs("CYCLE_TITLES", data2.CYCLE_TITLES); strs("OATH_A", data2.OATH_A)
 out.append("pub const LEGEND_MATERIALS: [(&str, &str); %d] = [%s];" % (len(data2.LEGEND_MATERIALS), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data2.LEGEND_MATERIALS.items())))
+
+# ---- beasts, bending, shinobi, the sea
+out.append("pub const BEASTS: [(&str, f64, f64, f64); %d] = [%s];" % (len(data2.BEASTS), ", ".join(f"({rs_str(k)}, {f(a)}, {f(b)}, {f(c)})" for k, (a, b, c) in data2.BEASTS.items())))
+out.append("pub const MERGED: [(&str, &str); %d] = [%s];" % (len(data.MERGED), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data.MERGED.items())))
+strs("ELEMENTS", data2.ELEMENTS)
+out.append("pub const ELEMENT_GENE: [&str; 4] = [%s];" % ", ".join(rs_str(data2.ELEMENT_GENE[e]) for e in data2.ELEMENTS))
+out.append("pub const TRIBES: [&str; 4] = [%s];" % ", ".join(rs_str(data2.TRIBES[e]) for e in data2.ELEMENTS))
+out.append("pub const BEND_FORMS: [([&str; 4], [&str; 2]); 4] = [%s];" % ", ".join(
+    f"([{', '.join(rs_str(x) for x in data2.BEND_FORMS[e][0])}], [{', '.join(rs_str(x) for x in data2.BEND_FORMS[e][1])}])" for e in data2.ELEMENTS))
+strs("BEND_TIER_NAMES", data2.BEND_TIER_NAMES); strs("CONCORD", [data2.CONCORD])
+strs("SHINOBI_CLANS", data2.SHINOBI_CLANS); strs("SHINOBI_RANKS", data2.SHINOBI_RANKS); strs("SHINOBI_HEAD", [data2.SHINOBI_HEAD])
+out.append("pub const NATURES: [(&str, [&str; 5]); %d] = [%s];" % (len(data2.NATURES), ", ".join(f"({rs_str(k)}, [{', '.join(rs_str(x) for x in v)}])" for k, v in data2.NATURES.items())))
+out.append("pub const SHINOBI_ARTS: [(&str, [&str; 5]); %d] = [%s];" % (len(data2.ARTS), ", ".join(f"({rs_str(k)}, [{', '.join(rs_str(x) for x in v)}])" for k, v in data2.ARTS.items())))
+out.append("pub const SHINOBI_EYES: [(&str, &str); %d] = [%s];" % (len(data2.SHINOBI_EYES), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data2.SHINOBI_EYES.items())))
+strs("SUMMON_PACTS", data2.SUMMON_PACTS)
+out.append("pub const SHIPS: [(&str, f64); %d] = [%s];" % (len(data2.SHIPS), ", ".join(f"({rs_str(a)}, {f(b)})" for a, b in data2.SHIPS)))
+out.append("pub const SEA_MONSTERS: [(&str, (f64, f64), usize, f64, f64, f64); %d] = [%s];" % (len(data2.SEA_MONSTERS), ", ".join(
+    f"({rs_str(k)}, ({f(pr[0])}, {f(pr[1])}), {cap}, {f(ren)}, {f(p0)}, {f(life)})" for k, (pr, cap, ren, p0, life) in data2.SEA_MONSTERS.items())))
+strs("SEA_MONSTER_A", data2.SEA_MONSTER_NAMES[0]); strs("SEA_MONSTER_B", data2.SEA_MONSTER_NAMES[1])
+strs("PIRATE_SHIP_A", data2.PIRATE_SHIP_A); strs("PIRATE_SHIP_B", data2.PIRATE_SHIP_B); strs("PIRATE_EPITHET", data2.PIRATE_EPITHET)
+strs("HAVEN_STYLE", data2.HAVEN_STYLE); strs("PIRATE_ORIGINS", data2.PIRATE_ORIGINS)
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")

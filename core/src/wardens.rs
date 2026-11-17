@@ -112,7 +112,6 @@ impl State {
         }
     }
 
-    fn party_index(&self, h: usize) -> Option<usize> { let p = self.chars[h].party; if p == NONE { None } else { self.hall.parties.iter().position(|x| x.id == p) } }
 
     fn parties(&mut self) {
         let mut i = 0;

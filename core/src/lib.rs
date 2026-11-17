@@ -7,6 +7,8 @@
 use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, IntoPyArray};
 use pyo3::prelude::*;
 
+mod beasts;
+mod bending;
 mod civics;
 mod climate;
 mod court;
@@ -26,6 +28,8 @@ mod opinion;
 mod people;
 mod populace;
 mod power;
+mod sea;
+mod shinobi;
 mod society;
 mod state;
 mod stewardship;
@@ -87,6 +91,11 @@ pub fn territory_of(h: usize, w: usize, is_ocean: impl Fn(usize, usize) -> bool,
         }
     }
     owner
+}
+
+/// "the open sea" -> "Open Sea": a title for a place.
+pub fn bending_title(s: &str) -> String {
+    s.split(' ').map(|w| { let mut c = w.chars(); match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() } }).collect::<Vec<_>>().join(" ")
 }
 
 #[pymodule]

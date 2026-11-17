@@ -252,6 +252,8 @@ impl State {
         (0.5 * r.gold).max(1.5 * r.income * r.tax_now * r.collect).max(0.0)
     }
 
+    pub fn battle_result_pub(&mut self, winner: usize, loser: usize) { self.battle_result(winner, loser, NONE); }
+
     fn battle_result(&mut self, winner: usize, loser: usize, captured: usize) {
         let Some(w) = self.wars.iter_mut().find(|w| (w.attacker == winner && w.defender == loser) || (w.attacker == loser && w.defender == winner)) else { return };
         let sign = if winner == w.attacker { 1.0 } else { -1.0 };

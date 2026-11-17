@@ -10,6 +10,7 @@ pub struct Land {
     pub size: usize,
     pub kind: &'static str, // "continent", "great isle", "isle"
     pub center: (usize, usize),
+    pub found_by: Vec<(i64, i64)>,   // (realm or -1 for pirates, year)
 }
 
 pub struct Map {
@@ -172,7 +173,7 @@ pub fn make_world(h: usize, w: usize, rng: &mut Pcg64, land_frac: f64) -> Map {
             }
         }
         lands.push(Land { id: i, name: nm, size, kind,
-                          center: ((sy[i] / size as f64) as usize, (sx[i] / size as f64) as usize) });
+                          center: ((sy[i] / size as f64) as usize, (sx[i] / size as f64) as usize), found_by: vec![] });
     }
     lands.sort_by_key(|l| l.id);
     let coast = {

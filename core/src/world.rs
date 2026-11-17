@@ -59,7 +59,9 @@ impl World {
                          sovereign_line: vec![], calamity_log: vec![], last_cal: vec![], gates: None, gate_history: vec![], dungeon_log: vec![], slain: 0, god_harvest: vec![],
                          hero_guilds: (0..4).map(crate::heroes::HeroGuild::new).collect(), acted: vec![], people_tier: [0; 4], world_tier: 3,
                          tier_events: vec![], rites: vec![], hall: Default::default(), myths: vec![], curses: vec![], cycles: vec![], materials: vec![],
-                         watch: vec![], corrupted: Grid::new(h, w, false), item_names: Default::default(), greatest: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
+                         watch: vec![], corrupted: Grid::new(h, w, false), tribes: vec![], concord: NONE, concord_next: 0, concord_waiting_child: false,
+                         concord_line: vec![], clans: vec![], clan_rivalry: vec![], clan_war: vec![], clan_truce: vec![], first_clan: NONE, havens: vec![],
+                         pirates: vec![], pirate_king: NONE, pirate_kings: vec![], piracy: vec![], sea_terror: vec![], naval_battles: vec![], dragon_riders: vec![], merges: vec![], item_names: Default::default(), greatest: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
                          bankruptcies: vec![], risings: vec![], epidemics: vec![], last_pandemic: -999, last_plague: -999, log: vec![],
                          climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
                          cultures: (0..4).map(crate::people::Culture::new).collect(),
@@ -73,6 +75,8 @@ impl World {
         world.st.grow_tables();
         world.st.found_guilds();
         world.st.found_faiths();
+        world.st.found_clans();
+        world.st.found_tribes();
         world.st.climate = crate::climate::Climate::setup(&world.st.map.terrain, &mut world.st.rng);
         world
     }
@@ -178,6 +182,10 @@ impl World {
             st.guilds_year();
             st.crime_year();
             st.religion_year();
+            st.shinobi_year();
+            st.bending_year();
+            st.sea_year();
+            st.beasts_year();
             st.legends_year();
             st.ecology_year();
             st.dungeons_year();

@@ -408,7 +408,7 @@ impl State {
             trade_protectionist: false, last_forced: -99, last_default: -99, mint_skill: 0.0, sector_boost: [0.0; 7],
             econ_prev_gdp: None, goods: vec![], market: vec![], treasury: vec![], soulstones: [0; 5], dragonbone: 0, potions: 0.0,
                 arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false, faith: people, persecuting: false, mods: vec![], parts: [0.0; 4], scrolls: [0.0; 11], scroll_power: 0.0,
-            top_scroll: 0, bound_share: 0.0, trade_shock: 0, dragons: 0 });
+            top_scroll: 0, bound_share: 0.0, trade_shock: 0, dragons: 0, merchants: 6.0, blockaded: 0, colonies: 0, discoveries: vec![] });
         self.grow_tables();
         id
     }
