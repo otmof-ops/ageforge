@@ -20,7 +20,7 @@ less, and recover with fallow, rotations and manure. And the granaries: grain ro
 import math
 
 import numpy as np
-from scipy import ndimage
+from . import nd as ndimage
 
 from .data import DESERT, HILLS, MOUNTAIN, OCEAN, PLAINS, SWAMP
 

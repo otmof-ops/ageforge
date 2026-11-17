@@ -254,7 +254,7 @@ def heir_of(realm, c):
     if c.spouse is not None and realm.chars[c.spouse].alive:
         return realm.chars[c.spouse]
     if c.house is not None:
-        kin = [realm.chars[i] for i in realm.living if realm.chars[i].house == c.house]
+        kin = [realm.chars[i] for i in realm.house_ids(c.house)]
         if kin:
             return min(kin, key=lambda x: x.born)
     return None

@@ -165,6 +165,8 @@ GENETIC = {"genius": {"lrn": 4, "talent": 1.5}, "quick": {"lrn": 2, "talent": 0.
            "frail": {"prowess": -2, "life": 0.8}, "longlived": {"life": 1.3},
            "hale": {"life": 1.1}, "sickly": {"life": 0.75}, "fecund": {}, "silver-tongued": {"lore": 3, "dip": 1},
            "dull": {"lore": -2, "lrn": -1}, "keen-eyed": {"prowess": 2}, "iron-boned": {"prowess": 2},
+           # the gift to make: art, songs and books come only from the artistic, and it runs in families (works.rs)
+           "artistic": {"lore": 1},
            # power genetics: rare bloodlines that break the limits a people is born under
            "starblood": {"talent": 3, "lrn": 2}, "dragonblood": {"prowess": 6, "talent": 1, "life": 1.5},
            "elderblood": {"life": 3.0, "lrn": 2, "lore": 2}, "titanblood": {"prowess": 10},
@@ -178,7 +180,7 @@ GENETIC = {"genius": {"lrn": 4, "talent": 1.5}, "quick": {"lrn": 2, "talent": 0.
 GENETIC_FREQ = {"genius": 0.02, "quick": 0.06, "slow": 0.04, "strong": 0.06, "weak": 0.04, "comely": 0.06,
                 "spellborn": 0.03, "giant": 0.01, "frail": 0.03, "longlived": 0.03, "hale": 0.05, "sickly": 0.04,
                 "fecund": 0.04, "silver-tongued": 0.04, "dull": 0.04, "keen-eyed": 0.05, "iron-boned": 0.03,
-                "beastspeaker": 0.006}
+                "beastspeaker": 0.006, "artistic": 0.015}
 POWER_GENES = {
     "starblood": "lifts the tier cap of their people by one, as far as the seventh tier and no further",
     "dragonblood": "breaks the level cap: they can climb past the hundredth level, to the hundred-and-thirtieth",

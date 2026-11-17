@@ -117,6 +117,36 @@ def labour_year(realm, alive, terr_wealth):
     masters = masters_by_town(realm)
     y = realm.year
     realm.econ_jobs = {"jobless": 0.0, "working": 0.0, "short": 0.0}
+    if getattr(realm, "_labour_reference", False):
+        _labour_loop(realm, alive, terr_wealth, masters)
+    else:
+        labour_vec(realm, alive, terr_wealth, masters)
+    # the idle drift to towns that need hands
+    for f in range(realm.npol):
+        towns = realm.alive_towns(f)
+        if len(towns) < 2:
+            continue
+        fed = [t for t in towns if getattr(t, "food_prod", 0) > 1.1 * t.pop]   # only where there is bread to spare
+        if not fed:
+            continue
+        need = max(fed, key=lambda t: getattr(t, "labour_short", 0.0))
+        if getattr(need, "labour_short", 0.0) <= 0.05:
+            continue
+        room = 0.5 * (need.food_prod - 1.05 * need.pop)
+        for t in towns:
+            if room <= 0:
+                break
+            if t is not need and getattr(t, "jobless", 0.0) > 0.08 and t.landmass == need.landmass:
+                n = min(room, t.pop * t.jobless * 0.15)
+                t.pop -= n
+                need.pop += n
+                room -= n
+    pay_masters(realm, masters)
+
+
+def _labour_loop(realm, alive, terr_wealth, masters):
+    """The town-by-town reference implementation of the labour model, kept to check labour_vec against."""
+    from . import civics
     for idx, s in enumerate(alive):
         if not s.alive:
             continue
@@ -213,27 +243,6 @@ def labour_year(realm, alive, terr_wealth):
         realm.econ_jobs["jobless"] += idle
         realm.econ_jobs["working"] += working
         realm.econ_jobs["short"] += max(0.0, demand - free)
-    # the idle drift to towns that need hands
-    for f in range(realm.npol):
-        towns = realm.alive_towns(f)
-        if len(towns) < 2:
-            continue
-        fed = [t for t in towns if getattr(t, "food_prod", 0) > 1.1 * t.pop]   # only where there is bread to spare
-        if not fed:
-            continue
-        need = max(fed, key=lambda t: getattr(t, "labour_short", 0.0))
-        if getattr(need, "labour_short", 0.0) <= 0.05:
-            continue
-        room = 0.5 * (need.food_prod - 1.05 * need.pop)
-        for t in towns:
-            if room <= 0:
-                break
-            if t is not need and getattr(t, "jobless", 0.0) > 0.08 and t.landmass == need.landmass:
-                n = min(room, t.pop * t.jobless * 0.15)
-                t.pop -= n
-                need.pop += n
-                room -= n
-    pay_masters(realm, masters)
 
 
 def pay_masters(realm, masters):
@@ -467,7 +476,7 @@ def money_year(realm):
         steward = realm.chars.get(k.council.get("steward")) if getattr(k, "council", None) else None
         ste = steward.attr("ste") if steward is not None else r.attr("ste") * 0.7
         mint = getattr(k, "mint_skill", 0.0)                           # a good Master of the Mint: honest weights, full royalties
-        k.collect = min(1.2, 0.75 + 0.02 * ste + 0.05 * min(1.0, mint))
+        k.collect = min(1.2, 0.75 + 0.02 * ste + 0.05 * min(1.0, mint)) * (1 - 0.5 * getattr(k, "domain_penalty", 0.0))
         if st == 0:                                                     # barter: no coin, no lenders
             floor = -max(20.0, 0.5 * k.income)
             if k.gold < floor:
@@ -590,3 +599,205 @@ def econ_rows(realm):
                      " ".join(f"{n[0]}{v:.0f}" for n, v in getattr(k, "parts", {}).items() if v >= 1) or "-",
                      f"{getattr(k, 'bound_share', 0):.0%}"))
     return rows
+
+
+# ---------------------------------------------------------------- the labour model, every town at once
+BLD = ["Mill and Granary", "Mine Works", "Workshops", "Market Hall", "Harbour", "Arcane College", "School"]
+SECTOR_BLD = [BLD.index(SECTOR_BUILDING[s]) if s in SECTOR_BUILDING else -1 for s in SECTORS]
+_ERF = np.vectorize(math.erf, otypes=[float])
+
+
+def labour_vec(realm, alive, terr_wealth, masters):
+    """labour_year's town loop as array arithmetic over all towns at once (same results, checked against
+    _labour_loop): jobs and who fills them, skill drift, output, income and wealth, classes, assets, poverty."""
+    from . import civics
+    towns = [(i, s) for i, s in enumerate(alive) if s.alive]
+    n = len(towns)
+    if not n:
+        return
+    S = len(SECTORS)
+    F = lambda: np.zeros(n)
+    pop, food, gar, trade, port, magic, threat, tgain, terr = F(), F(), F(), F(), F(), F(), F(), F(), F()
+    wealth, occ, mats, mins, coin, housing, relief = F(), F(), F(), F(), F(), F(), F()
+    saving, guild, st, reach, magicc, bound_sh, rent, tax, upper_t, communal = F(), F(), F(), F(), F(), F(), F(), F(), F(), F()
+    green, apprai = F(), F()
+    b = np.zeros((n, len(BLD)))
+    sk = np.zeros((n, S))
+    target = np.zeros((n, S))
+    teach = np.zeros((n, S))
+    stock = np.zeros((n, 3))
+    sect = {sc: j for j, sc in enumerate(SECTORS)}
+    cult_cache = {}
+    gifts = realm.town_gifts
+    y = realm.year
+    for r, (idx, s) in enumerate(towns):
+        k = realm.kingdoms[s.faction]
+        cul = s.culture
+        cc = cult_cache.get(cul)
+        if cc is None:
+            cu = realm.cultures[cul]
+            inn = cu.innovations
+            cc = cult_cache[cul] = (sum(v for nm, v in LABOUR_SAVING.items() if nm in inn), "Guild Charters" in inn,
+                                    stage(cu), sea_reach(cu), [culture_targets(cu, cul)[sc] for sc in SECTORS])
+        saving[r], guild[r], st[r], reach[r] = cc[0], cc[1], cc[2], cc[3]
+        target[r] = cc[4]
+        p = s.pop
+        pop[r] = p
+        food[r] = getattr(s, "food_prod", p)
+        gar[r] = getattr(s, "garrison", 0.0)
+        trade[r] = getattr(s, "trade", 0.0)
+        port[r] = s.port
+        magic[r] = s.magic
+        magicc[r] = MAGIC[cul]
+        threat[r] = getattr(s, "threat", 0.0)
+        tgain[r] = getattr(s, "trade_gain", 0.0)
+        terr[r] = terr_wealth[idx]
+        wealth[r] = s.wealth
+        occ[r] = getattr(s, "occupied_by", None) is not None
+        res = getattr(s, "res", {})
+        mats[r] = sum(m for rr, m in res.items() if rr in MATERIAL)
+        mins[r] = sum(m for rr, m in res.items() if rr in MINERAL)
+        bd = getattr(s, "bld", None)
+        if bd:
+            for j, nm in enumerate(BLD):
+                b[r, j] = bd.get(nm, 0)
+        bound_sh[r] = getattr(k, "bound_share", 0.0)
+        boost = getattr(k, "sector_boost", None)
+        if boost:
+            for sc, v in boost.items():
+                target[r, sect[sc]] += v
+        gov = getattr(k, "gov", "tribal")
+        rent[r] = RENT.get(gov, 0.3)
+        tax[r] = getattr(k, "tax_now", 0.25)
+        upper_t[r] = 0.8 if gov in ("republic", "administrative") else TAX_SHARE["upper"]
+        communal[r] = gov in ("tribal", "clan")
+        sd = getattr(s, "skill", None)
+        if sd is None:
+            sd = s.skill = dict(PEOPLE_SKILL[cul])
+        sk[r] = [sd[sc] for sc in SECTORS]
+        for c in masters.get(s.id, ()):
+            teach[r, sect[master_sector(c)]] += master_skill(c) / 100 * 0.12 * (2 if getattr(c, "gift", None) == "Forgeheart" else 1)
+        gs = gifts.get(s.id)
+        if gs:
+            green[r] = "Greenhand" in gs
+            apprai[r] = "Appraiser" in gs
+        h = getattr(s, "housing", None)
+        housing[r] = p * 1.1 if h is None else h
+        relief[r] = getattr(s, "relief", 0) > y
+        stk = getattr(s, "stock", None)
+        if stk is not None:
+            stock[r] = (stk["lower"], stk["middle"], stk["upper"])
+        coin[r] = getattr(s, "coin", 0.0)
+    # ---- jobs, and who fills them
+    working = WORKING * pop
+    soldiers = np.minimum(working * 0.08, 0.25 * gar)
+    free = working - soldiers
+    pm = np.maximum(1.0, pop)
+    J = np.zeros((n, S))
+    J[:, 0] = 0.78 * WORKING * pop * np.clip(food / pm, 0.9, 1.05) * (1 - saving) * (1 - 0.02 * b[:, 0])
+    J[:, 1] = 25.0 * mins + np.where(mins > 0, 30.0 * b[:, 1], 0.0)
+    J[:, 2] = pop * (0.03 + 0.04 * guild + 0.02 * (st >= 1) + 0.015 * b[:, 2]) + 25.0 * mats
+    J[:, 3] = 12.0 * trade + 40.0 * port * reach + 0.02 * pop * st + 0.01 * pop * b[:, 3] + 40.0 * b[:, 4]
+    J[:, 4] = 0.035 * pop
+    J[:, 5] = pop * 0.05 * st
+    J[:, 6] = pop * 0.004 * magicc * (1 + np.minimum(2.0, magic)) * (1 + 0.5 * b[:, 5])
+    bound = bound_sh * working
+    b_farm = np.minimum(bound, 0.6 * J[:, 0])
+    b_mine = np.minimum(bound - b_farm, 0.6 * J[:, 1])
+    J[:, 0] -= b_farm
+    J[:, 1] -= b_mine
+    demand = J.sum(1)
+    enough = demand <= free
+    Fl = J.copy()
+    ff = np.minimum(J[:, 0], free)
+    rest = free - ff
+    other = demand - J[:, 0]
+    ratio = np.divide(rest, other, out=np.zeros(n), where=other > 0)
+    Fl[~enough, 0] = ff[~enough]
+    Fl[~enough, 1:] = J[~enough, 1:] * ratio[~enough, None]
+    idle = np.where(enough, free - demand, 0.0)
+    short = np.where(enough, 0.0, demand / np.maximum(1.0, free) - 1)
+    jobless = idle / np.maximum(1.0, working)
+    farm_fill = Fl[:, 0] / np.maximum(1.0, J[:, 0])
+    # ---- skill drifts towards the people's gift, the culture's learning, the town's schools and its masters
+    tg = target + 0.03 * b[:, 6:7]
+    for j, bi in enumerate(SECTOR_BLD):
+        if bi >= 0:
+            tg[:, j] += 0.04 * b[:, bi]
+    tg = np.minimum(1.0, tg + np.minimum(0.3, teach))
+    sk += 0.06 * (tg - sk)
+    # ---- output
+    harvest = food / pm
+    safe = 1 - np.minimum(0.4, 0.25 * threat)
+    arc = Fl[:, 6] / pm * (0.6 + 0.8 * sk[:, 6])
+    mult = np.ones((n, S))
+    mult[:, 0] = np.minimum(1.6, 0.5 + 0.5 * harvest) * (1 + 0.08 * b[:, 0]) * safe * np.where(green > 0, 1.15, 1.0)
+    mult[:, 1] = (1 + 0.12 * b[:, 1]) * safe
+    mult[:, 2] = 1 + np.minimum(0.2, 25 * arc)
+    mult[:, 3] = (1 + 0.1 * np.minimum(10.0, trade)) * (1 + 0.08 * b[:, 3]) * safe * np.where(apprai > 0, 1.1, 1.0)
+    val = Fl * np.array([VALUE[sc] for sc in SECTORS]) * mult * (0.6 + 0.8 * sk) * UNIT
+    v_bound = (b_farm * VALUE["farm"] + b_mine * VALUE["mine"]) * 0.84 * UNIT * safe
+    labour_value = val.sum(1) + v_bound + idle * IDLE_VALUE * UNIT
+    real = (labour_value + 0.3 * terr + tgain) * np.where(occ > 0, 0.6, 1.0)
+    new_wealth = wealth * 0.96 + real
+    # ---- classes: who earns and owns what, and who falls below the line
+    vf_, vm, vc, vt, vcl, vs, va = (val[:, j] for j in range(S))
+    R = rent * vf_
+    vf = vf_ - R
+    restw = real - labour_value
+    inc = np.stack([vf * 0.8 + vm * 0.55 + vc * 0.3 + vt * 0.1 + vs * 0.6 + idle * IDLE_VALUE * UNIT
+                    + soldiers * 0.6 * UNIT,
+                    vf * 0.2 + R * 0.1 + vc * 0.6 + vt * 0.6 + vcl + vs * 0.4 + restw * 0.4 + va * 0.6,
+                    R * 0.9 + vm * 0.45 + vc * 0.1 + vt * 0.3 + restw * 0.6 + va * 0.4 + v_bound], 1)
+    f0, f1, f2, f3, f4, f5, f6 = (Fl[:, j] for j in range(S))
+    heads = np.stack([f0 * 0.9 + f1 + f2 * 0.4 + f3 * 0.1 + f5 * 0.6 + idle + soldiers,
+                      f0 * 0.08 + f2 * 0.55 + f3 * 0.7 + f4 + f5 * 0.4 + f6 * 0.8,
+                      f0 * 0.02 + f2 * 0.05 + f3 * 0.2 + pop * 0.01 + f6 * 0.2], 1)
+    th = heads.sum(1)
+    th = np.where(th == 0, 1.0, th)
+    tshare = np.stack([np.full(n, TAX_SHARE["lower"]), np.full(n, TAX_SHARE["middle"]), upper_t], 1)
+    housing = np.where(housing < pop * 1.15, housing * 1.015, housing)
+    crowd = np.maximum(0.0, pop / np.maximum(1.0, housing) - 1)
+    fr = np.clip(food / pm, 0.5, 1.3)
+    line = SUBSIST * fr ** -0.7 * (1 + 0.6 * crowd) * np.where(relief > 0, 0.9, 1.0)
+    people = heads / th[:, None] * pop[:, None]
+    net = inc * (1 - tax[:, None] * tshare)
+    per = net / np.maximum(1.0, people)
+    stock = stock * 0.95 + np.array([SAVE[c] for c in CLASSES]) * net
+    sig = np.array([SIGMA[c] for c in CLASSES])
+    safe_per = np.where(per > 0, per, 1.0)
+    z = (np.log(line[:, None] / safe_per) + sig * sig / 2) / sig
+    pov = np.where(per > 0, 0.5 * (1 + _ERF(z / math.sqrt(2))), 1.0)
+    land = R / 0.06
+    land_sp = np.stack([np.where(communal > 0, 0.5, 0.0), np.full(n, 0.15), np.where(communal > 0, 0.35, 0.85)], 1)
+    coin_sp = np.array([0.10, 0.35, 0.55])
+    house_sp = np.array([0.3, 0.35, 0.35])
+    poverty = (people * pov).sum(1) / pm
+    econ_mood = -70 * jobless + 25 * np.minimum(0.4, short) - 40 * (pov[:, 0] - 0.45)
+    # ---- write back what the rest of the world reads, town by town (random draws in town order, as before)
+    rng = realm.rng
+    for r, (idx, s) in enumerate(towns):
+        s.jobs = dict(zip(SECTORS, Fl[r].tolist()))
+        s.jobless, s.farm_fill, s.labour_short, s.bound_work = float(jobless[r]), float(farm_fill[r]), float(short[r]), float(b_farm[r] + b_mine[r])
+        sd = s.skill
+        for j, sc in enumerate(SECTORS):
+            sd[sc] = float(sk[r, j])
+        s.arcane = float(arc[r])
+        s.labour_value = float(labour_value[r])
+        s.real_income = s.income = float(real[r])
+        s.wealth = float(new_wealth[r])
+        if s.wealth > 80 + 50 * s.walls and s.walls < civics.walls_cap(realm, s.faction) and rng.random() < 0.1:
+            s.wealth -= 60 + 40 * s.walls
+            s.walls += 1
+        s.housing = float(housing[r])
+        s.crowded = float(crowd[r])
+        s.stock = {"lower": float(stock[r, 0]), "middle": float(stock[r, 1]), "upper": float(stock[r, 2])}
+        hv = housing[r] * HOUSE
+        s.cls = {c: (float(people[r, j]), float(per[r, j]), float(pov[r, j]),
+                     {"land": float(land[r] * land_sp[r, j]), "housing": float(hv * house_sp[j]),
+                      "stock": float(stock[r, j]), "coin": float(coin[r] * coin_sp[j])}) for j, c in enumerate(CLASSES)}
+        s.poverty = float(poverty[r])
+        s.econ_mood = float(econ_mood[r])
+    realm.econ_jobs["jobless"] += float(idle.sum())
+    realm.econ_jobs["working"] += float(working.sum())
+    realm.econ_jobs["short"] += float(np.maximum(0.0, demand - free).sum())

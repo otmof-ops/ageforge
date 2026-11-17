@@ -615,6 +615,9 @@ def spread_dark(realm, cy):
             s.pop *= 0.985
     if rng.random() < 0.1:
         kind = str(rng.choice(["wraith", "demon", "troll"]))
+        from .gates import may_rift
+        if kind == "demon" and not may_rift(realm):
+            kind = "wraith"
         from .data import MONSTER
         realm.new_monster(kind, cy.dark_center, rng.uniform(*MONSTER[kind][1]) * 1.5)
 

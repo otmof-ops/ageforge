@@ -13,7 +13,48 @@ CTX = {}                     # the running realm, so a person's power can see th
 
 
 def xp_needed(level):
-    return 10 * level ** 1.2
+    """Experience for the next level: past the twenties every level is a long road, so most heroes of the world
+    settle in their twenties and thirties, and the forties and beyond belong to legends."""
+    return 10 * level ** 1.2 * (1 + max(0, level - 25) / 5) ** 2
+
+
+def power_gate(c, martial=False):
+    """(Cached until the person changes; see _power_gate.)"""
+    g = c.__dict__.get("_gate")
+    if g is None:
+        g = c._gate = {}
+    v = g.get(martial)
+    if v is None:
+        v = g[martial] = _power_gate(c, martial)
+    return v
+
+
+def _power_gate(c, martial=False):
+    """The highest tier of power a mortal can reach, magic or martial, by the world's own measure: three for anyone
+    capable; four for rare masters of talent and long training; five and six for the near-mythic, who need a gift of
+    power besides. Characters the player makes have no ordinary limit."""
+    d = c.__dict__
+    if d.get("custom"):
+        return 10
+    lv = c.level
+    if martial:
+        cap = PROWESS_CAP[c.people]
+        skill = c.prowess / max(1.0, cap)
+        gift = getattr(c, "gift", None) in ("Iron Skin", "Born Captain") or bool({"titanblood", "dragonblood"} & c.genetic)
+    else:
+        skill = c.eff_talent() / 10
+        gift = getattr(c, "gift", None) == "Mana Well" or bool({"starblood", "abyssblood"} & c.genetic) or \
+            any(it.special == "tier" for it in c.items)
+    g = 3
+    if skill >= 0.6 and lv >= 22:
+        g = 4
+        if skill >= 0.85 and lv >= 40 and gift:
+            g = 5
+            if skill >= 0.95 and lv >= 55:
+                g = 6
+    if d.get("concord"):
+        g = max(g, 5)
+    return g
 
 
 class House:
@@ -104,6 +145,7 @@ class Character:
         self._lb = None
         self._cr = None
         self._tier = None
+        self._gate = None
 
     def mods(self):
         if self._mods is not None:
@@ -185,7 +227,7 @@ class Character:
         base = int(eff / 9) if "abyssblood" in self.genetic else min(int(eff / 9), int(self.eff_talent()))
         well = getattr(self, "gift", None) == "Mana Well"
         cap = self.tier_cap() + sum(1 for it in self.items if it.special == "tier") + well
-        limit = 10 if self.__dict__.get("custom") else 7                # no ordinary mortal casts above the seventh tier
+        limit = power_gate(self)                                        # the world's measure of a mortal
         return max(0, min(limit, cap, base + self.mods()["tier"] + well))
 
     def tier_cap(self):
@@ -276,8 +318,11 @@ class Character:
         if v is None:
             v = cache[a] = self._attr(a, realm)
         if realm is not None and a not in ("lore", "lrn") and getattr(realm, "kingdoms", None):
-            from .court import age_penalty
-            v -= age_penalty(realm, self)
+            ap = self.__dict__.get("_agep")
+            if ap is None or ap[0] != realm.year:                          # the toll of age, once a year
+                from .court import age_penalty
+                ap = self._agep = (realm.year, age_penalty(realm, self))
+            v -= ap[1]
         return v
 
     def _attr(self, a, realm):
@@ -302,9 +347,24 @@ class Character:
 
 
 # ---------------------------------------------------------------- making people
+BORROWED = {  # names the syllables could spell that belong to other people's worlds
+    "gimli", "thorin", "balin", "dwalin", "fili", "kili", "gloin", "oin", "bombur", "bofur", "bifur", "dori", "nori",
+    "ori", "durin", "thrain", "thror", "dain", "legolas", "elrond", "galadriel", "arwen", "celeborn", "thranduil",
+    "luthien", "beren", "turin", "aragorn", "boromir", "faramir", "eowyn", "eomer", "theoden", "frodo", "bilbo",
+    "gandalf", "saruman", "sauron", "morgoth", "smaug", "glaurung", "jon", "arya", "sansa", "robb", "eddard",
+    "catelyn", "daenerys", "viserys", "rhaegar", "tyrion", "cersei", "jaime", "tywin", "joffrey", "drogon",
+    "geralt", "ciri", "yennefer", "alduin", "ulfric", "ainz", "albedo", "shalltear", "demiurge", "cocytus", "sebas",
+    "gazef", "lakyus", "evileye", "fluder", "naruto", "sasuke", "itachi", "kakashi", "madara", "aang", "katara",
+    "sokka", "zuko", "toph", "iroh", "azula", "zelda", "ganon", "link"}
+
+
 def first_name(rng, people, female):
     pre_m, pre_f, suf_m, suf_f = FIRST[people]
-    return str(rng.choice(pre_f if female else pre_m)) + str(rng.choice(suf_f if female else suf_m))
+    for _ in range(20):
+        name = str(rng.choice(pre_f if female else pre_m)) + str(rng.choice(suf_f if female else suf_m))
+        if name.lower() not in BORROWED:
+            return name
+    return name + "a"
 
 
 def pick_class(rng, people, talent, exclude=()):
@@ -645,6 +705,14 @@ def sheet(c, realm):
     leg = legacy_lines(realm, c)
     if leg:
         lines.append("- **Legacies:** " + "; ".join(leg))
+    made = [w for w in getattr(realm, "works", []) if w.maker == c.id and w.kind != "heirloom"]
+    if made:
+        best = sorted(made, key=lambda w: -w.quality)[:5]
+        lines.append(f"- **Works ({len(made)}):** " + "; ".join(f"*{w.title}* ({w.kind}, {w.year}"
+                                                               + (", lost" if w.lost is not None else "") + ")" for w in best))
+    kept = [w for w in getattr(realm, "works", []) if w.kind == "heirloom" and w.holder == c.id and w.lost is None]
+    if kept:
+        lines.append("- **Heirlooms:** " + "; ".join(f"{w.title}" for w in kept))
     if c.legitimacy is not None:
         state = "corrupt" if c.legitimacy < 30 else "trusted" if c.legitimacy >= 70 else "accepted"
         lines.append(f"- **Governance:** legitimacy {c.legitimacy:.0f} ({state}), tyranny {c.tyranny:.0f}")

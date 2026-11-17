@@ -5,7 +5,7 @@ import numpy as np
 
 from . import (beasts, bending, crafts, dungeons, dynasty, ecology, geography, governance, heroes, legends, monsters,
                titles, youth, civics, resources, statecraft, court, opinion, heart, economy, populace,
-               warfare, events, godmode, markets, stewardship, arcana, bounties, guild,
+               warfare, events, godmode, markets, stewardship, arcana, bounties, guild, gates,
                seafaring,
                shinobi, society)
 from .characters import Item, SINGULAR
@@ -48,6 +48,11 @@ def _kernel(rad):
 
 
 KERNELS = {r: _kernel(r) for r in range(0, 12)}
+
+try:                                                                     # the heavy work in Rust, when it is built
+    from . import _core                                                  # (core/, built by bin/build-core)
+except ImportError:
+    _core = None
 
 
 class Settlement:
@@ -334,6 +339,30 @@ class Realm:
             out += [s for s in self._moved if s.alive and s.faction == f and id(s) not in seen]
         return out
 
+    def house_ids(self, h):
+        """Ids of the living of house h, indexed once a year (the dead filtered out on reading)."""
+        idx = self.__dict__.get("_house_idx")
+        if idx is None or idx[0] != self.year:
+            by = {}
+            for i in self.living:
+                hh = self.chars[i].house
+                if hh is not None:
+                    by.setdefault(hh, []).append(i)
+            idx = self._house_idx = (self.year, by)
+        return [i for i in idx[1].get(h, ()) if i in self.living]
+
+    def outlaw_ids(self, f):
+        """Ids of the living thieves, assassins and bandits of realm f, indexed once a year."""
+        idx = self.__dict__.get("_outlaw_idx")
+        if idx is None or idx[0] != self.year:
+            by = {}
+            for i in self.living:
+                c = self.chars[i]
+                if c.profession in ("thief", "assassin", "bandit"):
+                    by.setdefault(c.realm, []).append(i)
+            idx = self._outlaw_idx = (self.year, by)
+        return [i for i in idx[1].get(f, ()) if i in self.living]
+
     def member_ids(self, f):
         """Ids of the living who serve realm f. Indexed once a year; anyone who changed realm since is re-checked."""
         idx = getattr(self, "_mem_idx", None)
@@ -433,6 +462,19 @@ class Realm:
 
     # ---------------- territory and economy
     def compute_territory(self):
+        if _core is not None:                                            # the Rust twin, identical cell for cell
+            alive = self.alive_towns()
+            terr = self.__dict__.get("_terr64")
+            if terr is None or terr.shape != self.terrain.shape:
+                terr = self._terr64 = self.terrain.astype(np.int64)
+            owner = _core.territory(terr, int(OCEAN), np.array([s.pos[0] for s in alive], np.int64),
+                                    np.array([s.pos[1] for s in alive], np.int64),
+                                    np.array([s.pop for s in alive], np.float64),
+                                    np.array([bool(s.capital) for s in alive]))
+            self.owner, self.cache = owner, alive
+            fac = np.array([s.faction for s in alive] + [-1])
+            self.owner_fac = fac[owner]
+            return
         H, W = self.H, self.W
         owner = np.full((H, W), -1, int)
         best = np.zeros((H, W))
@@ -703,8 +745,10 @@ class Realm:
                 w = self.mana[cells[:, 0], cells[:, 1]] + 0.05
                 r, c = cells[rng.choice(len(cells), p=w / w.sum())]
                 power = rng.uniform(*prange)
-                if kind == "demon" and rng.random() < 0.5:              # the veil holds more often than not
-                    continue
+                if kind == "demon":                                      # the Veil holds; a fray lets one through
+                    if not gates.may_rift(self) or rng.random() > 0.15:
+                        continue
+                    power = gates.rift_power(self)
                 if kind == "dragon" and any(o.alive and o.kind == "dragon" and dist(o.pos, (r, c)) < 45
                                             for o in self.monsters):
                     continue                                            # every dragon needs a great range to hunt
@@ -735,9 +779,8 @@ class Realm:
             name = f"{self.name(DRAGON_SYL)} {rng.choice(DRAGON_EPITHET)}"
             self.say(f"**A dragon.** {name} comes down out of the peaks and makes a lair near {near}.")
         elif kind == "demon":
-            top = max(5, getattr(self, "world_tier", 0) + 2)             # no more than two tiers past the best mortal
-            power = min(power, (top - 4) * 600 + 599)
-            name = f"{self.name(DEMON_SYL)}, a demon of the {TIER_WORDS[int(min(10, 4 + power // 600))]} tier"
+            power = gates.demon_cap(self, power)                         # nothing above the fifth through a fray
+            name = f"{self.name(DEMON_SYL)}, a demon of the {TIER_WORDS[gates.tier_of(power)]} tier"
             self.say(f"A ley-nexus tears near {near} and {name} steps through.")
         elif kind == "wraith":
             name = f"the Wraith of the {rng.choice(WILD_A)} {rng.choice(WILD_B[SWAMP])}"
@@ -972,6 +1015,7 @@ class Realm:
         ecology.ecology_year(self)
         dungeons.dungeons_year(self)
         monsters.monster_year(self)
+        gates.gates_year(self)
         pf, pairs = self.borders()
         self.diplomacy(pf, pairs)
         self.events()

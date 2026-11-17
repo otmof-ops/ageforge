@@ -276,12 +276,14 @@ def arts_year(realm):
         if not any(cls in MARTIAL_CLASSES for cls, _ in c.classes):
             continue
         have = getattr(c, "battle_arts", None)
-        n = min(len(ARTS), c.level // 5)
+        from .characters import power_gate
+        gate = power_gate(c, martial=True)
+        n = min(c.level // 8, {3: 3, 4: 4, 5: 5}.get(gate, 7))         # three arts for most; the rest for the few
         if have is None or len(have) < n:
             c.battle_arts = ARTS[:n]
             if n >= 5 and realm.rng.random() < 0.3:
                 realm.say(f"{realm.who(c)} masters {ARTS[n - 1]}.", minor=True)
-        if c.level >= 35 and len(getattr(c, "battle_arts", [])) == len(ARTS) and not getattr(c, "lost_art", None) \
+        if gate >= 6 and len(getattr(c, "battle_arts", [])) == len(ARTS) and not getattr(c, "lost_art", None) \
                 and c.prowess >= 0.75 * PROWESS_CAP[c.people] and realm.rng.random() < 0.05:
             c.lost_art = str(realm.rng.choice(LOST_ARTS))
             realm.say(f"**A lost art.** {realm.who(c)} rediscovers {c.lost_art}, unseen for an age.")

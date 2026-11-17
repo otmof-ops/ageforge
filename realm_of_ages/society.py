@@ -151,6 +151,12 @@ def heist(realm, c):
               [(it, "market of " + k.name, k.market) for it in k.market[:5]]
     if not targets:
         return
+    guard = court_guard(realm, k, None)
+    if rng.random() < guard / (guard + skill(realm, c, "Security") + 20):   # the watch is waiting
+        c.jailed_until = realm.year + int(rng.integers(5, 15))
+        realm.say(f"{realm.who(c)} is taken in the {targets[0][1].split(' of ')[0]} of {k.name} and thrown in irons.",
+                  minor=True)
+        return
     it, where, src = max(targets, key=lambda t: t[0].bonus)
     src.remove(it)
     from .heroes import give_item
@@ -162,30 +168,61 @@ def heist(realm, c):
               f"The bounty on their head is now {c.bounty:,.0f} gold.", minor=it.rarity < 4)
 
 
+RANK_GUARD = {"tribe": 0, "chiefdom": 15, "duchy": 30, "kingdom": 60, "empire": 90}
+
+
+def court_guard(realm, k, tgt):
+    """How well a court keeps its own: the guard a realm of its rank can afford, what it has learned from losses,
+    and a regency's watch over a child on the throne."""
+    g = RANK_GUARD.get(getattr(k, "rank", "tribe"), 0) + getattr(k, "security", 0.0)
+    if tgt is not None and k.ruler == tgt.id and not tgt.adult(realm.year):
+        g += 40
+    return g
+
+
+def willing(realm, kid):
+    """Not every ruler at war will buy a murder: the honest, the just and the compassionate refuse."""
+    r = realm.chars.get(realm.kingdoms[kid].ruler)
+    if r is None:
+        return False
+    p = r.personality
+    if p & {"honest", "just", "compassionate"}:
+        return False
+    return bool(p & {"deceitful", "cruel", "paranoid", "vengeful", "ambitious", "arbitrary"}) or realm.rng.random() < 0.15
+
+
 def contract(realm, c):
     """The Quiet Hand takes contracts from kings at war and from plotters at court."""
     rng = realm.rng
     if rng.random() > 0.06:
         use(realm, c, "Sneak", 0.8)
         return
-    wars = [(i, j) for i in range(realm.npol) for j in range(realm.npol) if i != j and realm.war[i, j]]
+    wars = [(i, j) for i in range(realm.npol) for j in range(realm.npol) if i != j and realm.war[i, j]
+            and willing(realm, i)]
     if not wars:
         return
     client, target_people = wars[int(rng.integers(len(wars)))]
     tk = realm.kingdoms[target_people]
+    ck = realm.kingdoms[client]
     cands = [h for h in realm.heroes() if h.realm == target_people and h.alive] + \
             ([realm.chars[tk.ruler]] if tk.ruler is not None and realm.chars[tk.ruler].alive else [])
     if not cands:
         return
     tgt = cands[int(rng.integers(len(cands)))]
     spy = realm.chars.get(tk.council.get("spymaster"))
-    defence = tgt.cr() / 50 + (spy.attr("intr") * 3 if spy else 0) + (20 if tgt.undead else 0)
+    defence = tgt.cr() / 50 + (spy.attr("intr") * 3 if spy else 0) + (20 if tgt.undead else 0) \
+        + court_guard(realm, tk, tgt)                                   # guards, tasters, locked doors
     attack = skill(realm, c, "Sneak") + skill(realm, c, "Blade") / 2 + skill(realm, c, "Alchemy") / 3
     use(realm, c, "Sneak", 2.0)
     use(realm, c, "Blade", 1.0)
     if rng.random() < attack / (attack + defence + 60):
         rev = getattr(tk, "income", 0.0) * getattr(tk, "tax_now", 0.3)
         fee = max(5.0, (0.3 if tgt.id != tk.ruler else 1.0) * rev)       # a ruler's life costs a year of a realm's taxes
+        if ck.gold < fee:
+            return                                                       # the client cannot pay; no one moves
+        ck.gold -= fee
+        from .events import book
+        book(realm, client, "assassins", -fee, "a quiet payment")
         c.gold += fee
         c.bounty += fee
         from .crafts import gain_fame
@@ -193,6 +230,7 @@ def contract(realm, c):
         realm.say(f"{realm.who(tgt)} is found dead, a black feather on the pillow: the work of the Quiet Hand, paid in "
                   f"{realm.pname(client)} gold.", minor=tgt.id != tk.ruler)
         realm.kill(tgt, "was murdered by the Quiet Hand", quiet=True, by=realm.chars.get(realm.kingdoms[client].ruler))
+        tk.security = getattr(tk, "security", 0.0) + 40                     # the court hires guards and tasters
     elif rng.random() < 0.3:
         realm.say(f"An assassin of the Quiet Hand, {realm.who(c)}, is taken in the act and hanged.", minor=True)
         realm.kill(c, "was hanged after a failed contract")
@@ -221,7 +259,7 @@ def caught(realm, c, home):
 
 def bounty_target(realm, h):
     best, bv = None, 50.0
-    for i in realm.living:
+    for i in realm.outlaw_ids(h.realm):
         c = realm.chars[i]
         if c.profession in ("thief", "assassin", "bandit") and c.bounty > bv and \
                 getattr(c, "jailed_until", 0) <= realm.year and c.realm == h.realm:

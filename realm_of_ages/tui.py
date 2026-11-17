@@ -23,7 +23,7 @@ from .session import PRESETS, Session, list_worlds
 
 SIZES = [("Small (240 x 135)", (240, 135)), ("Standard (480 x 270)", (480, 270)), ("Huge (640 x 360)", (640, 360))]
 BOOKS = ["summary.md", "realms.md", "dynasties.md", "legends.md", "myths.md", "world.md", "magic.md", "seas.md",
-         "pirates.md", "society.md", "dungeons.md", "bestiary.md", "calibration.md", "tracked.md"]
+         "pirates.md", "society.md", "works.md", "dungeons.md", "bestiary.md", "calibration.md", "tracked.md"]
 CAT_STYLE = {"god": "bold magenta", "war": "red", "politics": "yellow", "economy": "green", "people": "cyan",
              "lives": "white", "culture": "bright_blue", "heart": "bright_magenta", "magic": "magenta",
              "monsters": "bright_red", "heroes": "bright_yellow", "sea": "blue", "faith": "bright_cyan",
@@ -64,7 +64,8 @@ class Home(Screen):
         self.worlds = list_worlds()
         for w in self.worlds:
             state = "ended" if w.get("ended") else f"year {w.get('year', 0)}"
-            ol.add_option(Option(f"{w['name']}  ({state}, seed {w.get('seed')})", id=w["dir"]))
+            old = "" if w.get("engine") == "rust" else ", old engine: read its books on disk"
+            ol.add_option(Option(f"{w['name']}  ({state}, seed {w.get('seed')}{old})", id=w["dir"]))
 
     def on_button_pressed(self, ev: Button.Pressed):
         if ev.button.id == "new":
@@ -75,14 +76,25 @@ class Home(Screen):
                 self.notify("Pick a world first.")
                 return
             path = ol.get_option_at_index(ol.highlighted).id
-            self.notify("Opening the world...")
-            self.app.push_screen(WorldScreen(Session.load(path)))
+            years = next((w.get("year", 0) for w in self.worlds if w["dir"] == path), 0)
+            self.notify(f"Opening the world: replaying {years:,} years of its history...")
+            self.open_world(path)
         elif ev.button.id == "quit":
             self.app.exit()
 
     def created(self, s):
         if s is not None:
             self.app.push_screen(WorldScreen(s))
+
+    @work(thread=True, exclusive=True)
+    def open_world(self, path):
+        """A world is rebuilt by replaying its record, which takes a moment for an old one."""
+        try:
+            s = Session.load(path)
+        except Exception as e:
+            self.app.call_from_thread(self.notify, f"Cannot open it: {e}", severity="error")
+            return
+        self.app.call_from_thread(self.app.push_screen, WorldScreen(s))
 
 
 class NewWorld(ModalScreen):

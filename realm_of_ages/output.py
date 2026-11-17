@@ -249,12 +249,12 @@ def tree(realm, root, k, max_depth=8):
     rulers = {r["id"]: r for r in k.reigns}
     memo = {}
 
-    def has_ruler(c):
-        if c.id in memo:
-            return memo[c.id]
-        v = c.id in rulers or any(has_ruler(chars[x]) for x in c.children)
-        memo[c.id] = v
-        return v
+    def has_ruler(c, depth):
+        """Whether a ruler of this realm is c or a descendant the tree will still show (no deeper than max_depth)."""
+        key = (c.id, depth)
+        if key not in memo:
+            memo[key] = c.id in rulers or (depth < max_depth and any(has_ruler(chars[x], depth + 1) for x in c.children))
+        return memo[key]
     out = []
 
     def walk(c, depth):
@@ -277,7 +277,7 @@ def tree(realm, root, k, max_depth=8):
                    + (f"; {'; '.join(extra)}" if extra else ""))
         kids = sorted((chars[x] for x in c.children), key=lambda x: x.born)
         for kid in kids:
-            if has_ruler(kid) or depth < 1:
+            if has_ruler(kid, depth + 1) or depth < 1:
                 walk(kid, depth + 1)
     walk(root, 0)
     return out
@@ -489,6 +489,55 @@ def write_books(realm, out):
                  f"revealed {rec['revealed'] or 'never'}; " + ("; ".join(rec["deeds"]) or "no great deeds")
                  + (f"; died year {rec['died'][0]}: {rec['died'][1]}" if rec["died"] else ""))
     _w(os.path.join(out, "society.md"), L)
+    write_works(realm, os.path.join(out, "works.md"))
+
+
+def write_works(realm, path):
+    """Art, books, heirlooms and monuments: what the world made to remember itself by, and what became of it."""
+    works = getattr(realm, "works", [])
+    chars = realm.chars
+
+    def who(i):
+        return chars[i].full_name() if i is not None and i in chars else "an unknown hand"
+
+    def where(w):
+        if w.lost is not None:
+            return f"lost (year {w.lost})"
+        if w.kind in ("treatise", "chronicle", "epic"):
+            return f"{len(w.copies)} cop{'y' if len(w.copies) == 1 else 'ies'}"
+        k = realm.kingdoms[w.realm].name if w.realm is not None else "no one"
+        if w.kind == "heirloom":
+            return f"held by {who(w.holder)}"
+        return f"in {realm.by_id[w.town].name if w.town is not None and w.town in realm.by_id else 'the court'} ({k})"
+
+    def history(w):
+        return "; ".join(f"{y}: {t}" for y, t in w.history)
+    gifted = [c for c in chars.values() if c.alive and "artistic" in c.genetic]
+    L = ["# Works", "", "Only the gifted make art and books: the artistic, about one birth in seventy, and the gift runs in "
+         "families. Lesser pieces are made, sold and forgotten; these are the ones the world kept.", "",
+         f"{len(works)} works remembered ({sum(1 for w in works if w.lost is None)} still in the world); "
+         f"{len(gifted)} artistic people living.", ""]
+    sections = [("Monuments", ("monument",)), ("Masterpieces", ("painting", "carving", "tapestry", "song")),
+                ("Books", ("chronicle", "epic", "treatise")), ("Heirlooms", ("heirloom",))]
+    for name, kinds in sections:
+        ws = sorted((w for w in works if w.kind in kinds), key=lambda w: -w.quality)
+        L += [f"## {name} ({len(ws)})", ""]
+        for w in ws[:40]:
+            maker = "" if w.kind == "heirloom" else f" by {who(w.maker)}, year {w.year}"
+            about = f"Of {w.subject}." if w.kind != "treatise" else f"Teaches {w.sector}."
+            L += [f"- **{w.title}** ({w.kind}{maker}; {where(w)}). {about}",
+                  f"  History: {history(w)}"]
+        if not ws:
+            L.append("- none yet")
+        L.append("")
+    makers = {}
+    for w in works:
+        if w.kind != "heirloom":
+            makers.setdefault(w.maker, []).append(w)
+    L += ["## The great makers", ""]
+    for m, ws in sorted(makers.items(), key=lambda kv: -sum(w.quality for w in kv[1]))[:15]:
+        L.append(f"- {who(m)}: {len(ws)} works, best *{max(ws, key=lambda w: w.quality).title}*")
+    _w(path, L)
 
 
 def write_realms(realm, path):
@@ -629,6 +678,12 @@ def write_calibration(realm, path):
         L.append(f"| Forced loans (seizing merchants' gold) | common in crises (Edward III's wool, Philip IV) | "
                  f"{len(st.get('forced', []))} |")
         L.append(f"| Share of workers on the land | about 75-90% | {farm:.0%} |")
+        alive = realm.alive_towns()
+        tp = sum(t.pop for t in alive) or 1
+        eaten = sum(getattr(t, "food_prod", 0) for t in alive) / tp
+        packed = sum(t.pop for t in alive if getattr(t, "crowded", 0) > 0.1) / tp
+        L.append(f"| Food eaten per head (after seed, beasts and losses) | most households near subsistence | {eaten:.2f} |")
+        L.append(f"| Townsfolk in overcrowded housing | common in growing towns | {packed:.0%} |")
         L.append(f"| Poor (below subsistence) | about 30-50% near or below the line in hard times | {pov:.0%} now |")
         L.append(f"| Classes (lower / middle / upper) | about 80 / 15 / 5 | {cls['lower']:.0%} / {cls['middle']:.0%} / "
                  f"{cls['upper']:.0%} |")

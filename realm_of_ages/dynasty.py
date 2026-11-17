@@ -235,6 +235,70 @@ def succeed(realm, k, how):
         heir = civil_war(realm, k, heir, rival)
         reason = "after a war for the throne"
     crown(realm, k, heir, reason)
+    if old is not None:
+        partition(realm, k, old, heir)
+
+
+def unite_crowns(realm, mine, other, c, reason):
+    """A ruler who comes into a second crown holds both titles in one realm: the lands of the second join the first,
+    and the title system gives the realm both kingdom titles (three make an empire). How long the union lasts is the
+    law's business: primogeniture keeps it whole, partition splits it again, title by title."""
+    from .civics import absorb
+    from .titles import control, ensure_titles, rank_names
+    old = realm.chars.get(other.ruler)
+    if old is not None and old.id != c.id and old.ruled is not None and old.ruled[2] is None:
+        end_reign(realm, other, "the crowns were united")
+    name = other.name
+    absorb(realm, mine, other)
+    ensure_titles(realm)
+    control(realm)
+    rank_names(realm)
+    realm.say(f"**Two crowns, one head.** {realm.who(c)}, already ruling {mine.name}, comes into the crown of {name} "
+              f"({reason}); both titles are held now by {mine.name}.")
+
+
+PARTITION = [0.35, 0.35, 0.35, 1.0]                                    # orc custom always divides the inheritance
+
+
+def partition(realm, k, old, heir):
+    """Tribal and clan custom divides a dead ruler's lands among their grown children: the heir keeps the seat, and
+    each other child takes a duchy as a realm of their own."""
+    if realm.extinct[k.id] or getattr(k, "gov", "tribal") not in ("tribal", "clan") or \
+            realm.rng.random() > PARTITION[k.people]:
+        return
+    kids = [realm.chars[i] for i in old.children if i in realm.chars]
+    kids = [c for c in kids if c.alive and c is not heir and c.adult(realm.year) and c.realm == k.id and not c.ruled]
+    if not kids:
+        return
+    seat = realm.capital_of(k.id)
+    towns = realm.alive_towns(k.id)
+    from .titles import secede
+    # kingdom titles first: each other child takes a whole crown the realm holds besides the seat's
+    seat_kt = realm.duchies[seat.duchy]["kt"] if seat is not None and getattr(seat, "duchy", None) in realm.duchies else None
+    crowns = [kt for kt, kd in realm.ktitles.items() if kd["ctrl"] == k.id and kt != seat_kt]
+    if crowns:
+        shares = []
+        for c, kt in zip(kids, crowns):
+            dks = {dk for dk, d in realm.duchies.items() if d["kt"] == kt and d["ctrl"] == k.id}
+            if dks:
+                shares.append((c, dks))
+        if shares:
+            realm.say(f"**The crowns are divided.** By the custom of {k.name}, the kingdoms of {old.full_name()} go to "
+                      f"their children: " + ", ".join(f"{c.name} takes {realm.ktitles[kt]['name']}"
+                                                       for (c, _), kt in zip(shares, crowns)) + ".")
+            for c, dks in shares:
+                secede(realm, k, dks, c, 0)
+            return
+    dks = sorted({t.duchy for t in towns if getattr(t, "duchy", None) and (seat is None or t.duchy != seat.duchy)},
+                 key=lambda dk: -sum(getattr(t, "duchy", None) == dk for t in towns))
+    shares = list(zip(kids, dks))
+    if not shares:
+        return
+    realm.say(f"**The inheritance is divided.** By the custom of {k.name}, the lands of {old.full_name()} are "
+              + (f"shared among their children: {', '.join(c.name for c, _ in shares)} each take a land of their own."
+                 if len(shares) > 1 else f"divided: {shares[0][0].name} takes a land of their own."))
+    for c, dk in shares:
+        secede(realm, k, {dk}, c, 0)
 
 
 def civil_war(realm, k, a, b):
@@ -259,6 +323,10 @@ def civil_war(realm, k, a, b):
 
 
 def crown(realm, k, c, reason):
+    held = c.ruled[0] if c.ruled is not None and c.ruled[2] is None else None
+    if held is not None and held != k.id and not realm.extinct[held]:
+        unite_crowns(realm, realm.kingdoms[held], k, c, reason)          # one person, one throne: the realms join
+        return
     f = k.id
     new_dyn = c.house is None or c.house != k.house
     if c.house is None:
@@ -282,7 +350,7 @@ def crown(realm, k, c, reason):
         c.hero = False
         realm.hero_ids.discard(c.id)
         reason += ", and gives up the adventurer's road for the crown"
-    title = RULER_TITLE[k.people][int(c.female)]
+    title = RULER_TITLE[c.people][int(c.female)]                     # a ruler is styled as their own people style them
     lead = "**A new dynasty.** " if new_dyn and len(k.reigns) > 1 else ""
     from .governance import on_crown
     on_crown(realm, k, c, reason)
@@ -364,12 +432,16 @@ def dynasty_year(realm):
         r = realm.chars.get(k.ruler)
         if r is None or not r.alive:
             succeed(realm, k, r.cause if r is not None else "the throne lay empty")
+            if realm.extinct[f]:
+                continue                                                 # its crown passed to another realm
             r = realm.chars[k.ruler]
         regency(realm, k, r)
         plots(realm, k)
-        r = realm.chars[k.ruler]
-        if not r.alive:
+        r = realm.chars.get(k.ruler)
+        if r is not None and not r.alive:
             succeed(realm, k, r.cause)
+            if realm.extinct[f] or k.ruler is None:
+                continue                                                 # its crown passed to another realm
         marriages(realm, k)
         council(realm, k)
         princes_errant(realm, k)
@@ -577,7 +649,10 @@ def plots(realm, k):
         if o is k or not realm.war[k.realm, o.id] or realm.extinct[o.realm]:
             continue
         ospy = realm.chars.get(o.council["spymaster"])
-        if ospy is not None and rng.random() < min(0.01, 0.0008 * max(0.0, ospy.attr("intr") - 0.8 * guard)):
+        from .society import court_guard
+        shield = 0.8 * guard + court_guard(realm, k, r) / 4                 # guards and tasters the court keeps
+        if ospy is not None and rng.random() < min(0.01, 0.0008 * max(0.0, ospy.attr("intr") - shield)):
+            k.security = getattr(k, "security", 0.0) + 40
             realm.say(f"{realm.who(r)} is assassinated by agents of {o.name}, at the word of {realm.who(ospy)}.")
             realm.kill(r, f"was assassinated by agents of {o.name}", quiet=True, by=realm.chars.get(o.ruler))
             return
