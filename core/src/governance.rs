@@ -77,7 +77,7 @@ impl State {
             let r = self.realms[k].ruler;
             let [m, s, _, mg, _, _] = self.realms[k].council;
             let rc = &self.chars[r];
-            let battle = 1.0 + ((if m != NONE { self.chars[m].attr(1, y) } else { 0.0 }) + rc.attr(1, y) * 0.5) / 60.0;
+            let battle = (1.0 + ((if m != NONE { self.chars[m].attr(1, y) } else { 0.0 }) + rc.attr(1, y) * 0.5) / 60.0) * self.realms[k].modv("martial", y);
             let growth = 1.0 + ((if s != NONE { self.chars[s].attr(2, y) } else { 0.0 }) + rc.attr(2, y) * 0.5) / 80.0;
             let tier = if mg != NONE { self.tier(&self.chars[mg]).max(0) } else { 0 };
             let p = |t: &str| rc.has_trait(t) as u8 as f64;

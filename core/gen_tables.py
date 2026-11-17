@@ -212,6 +212,36 @@ out.append("pub const BASE_FAITHS: [(&str, &str); 4] = [%s];" % ", ".join(f"({rs
 out.append("pub const TENETS: [(&str, &str); %d] = [%s];" % (len(data2.TENETS), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data2.TENETS.items())))
 strs("FAITH_A", data2.FAITH_A); strs("DEITY_A", data2.DEITY_A); strs("DEITY_B", data2.DEITY_B)
 
+# ---- ecology
+from realm_of_ages import ecology as _ec  # noqa: E402
+out.append("pub const SPECIES: [(&str, u8, [f64; 9], f64, f64, bool, &[&str], Option<&str>, f64); %d] = [%s];" % (len(_ec.SPECIES), ", ".join(
+    f"({rs_str(n)}, {t}, [{', '.join(f(x) for x in hab)}], {f(r)}, {f(sz)}, {'true' if my else 'false'}, &[{', '.join(rs_str(p) for p in prey)}], "
+    f"{'None' if tame is None else 'Some(' + rs_str(tame) + ')'}, {f(dg)})" for n, t, hab, r, sz, my, prey, tame, dg in _ec.SPECIES)))
+nums("PRODUCTIVITY", _ec.PRODUCTIVITY); strs("BIOMES", _ec.BIOMES); strs("VARIANT_PREFIX", _ec.VARIANT_PREFIX); strs("REGION_A", _ec.REGION_A)
+strs("REGION_B", [_ec.REGION_B[b] for b in _ec.BIOMES])
+
+# ---- monsters
+out.append("pub const MONSTER: [(&str, i32, (f64, f64), f64, f64, f64, usize, f64, f64); %d] = [%s];  // kind, terrain (-1 none, -2 mana), power, reach, raid chance, loss, cap, renown, spawn" % (len(data.MONSTER), ", ".join(
+    f"({rs_str(k)}, {(-1 if t is None else -2 if t == 'mana' else t)}, ({f(pr[0])}, {f(pr[1])}), {f(rr)}, {f(ch)}, {f(lo)}, {cap}, {f(ren)}, {f(p0)})"
+    for k, (t, pr, rr, ch, lo, cap, ren, p0) in data.MONSTER.items())))
+out.append("pub const MONSTER_LIFE: [(&str, f64); %d] = [%s];" % (len(data.MONSTER_LIFE), ", ".join(f"({rs_str(k)}, {f(v)})" for k, v in data.MONSTER_LIFE.items())))
+strs("DRAGON_TRAITS", data.DRAGON_TRAITS); strs("DRAGON_SYL_A", data.DRAGON_SYL[0]); strs("DRAGON_SYL_B", data.DRAGON_SYL[1])
+strs("DRAGON_EPITHET", data.DRAGON_EPITHET); strs("DEMON_SYL_A", data.DEMON_SYL[0]); strs("DEMON_SYL_B", data.DEMON_SYL[1])
+strs("CALAMITY_A", data.CALAMITY_A); strs("CALAMITY_B", data.CALAMITY_B); strs("CALAMITY_TITLE", data.CALAMITY_TITLE)
+strs("WILD_A", data.WILD_A)
+out.append("pub const WILD_B: [(i8, &[&str]); %d] = [%s];" % (len(data.WILD_B), ", ".join(f"({k}, &[{', '.join(rs_str(x) for x in v)}])" for k, v in data.WILD_B.items())))
+strs("TIER_WORDS", data.TIER_WORDS); strs("SCHOOLS", data.SCHOOLS); strs("WORLD_RITES", data.WORLD_RITES)
+out.append("pub const SPELLS: [[&str; 11]; 6] = [%s];" % ", ".join("[" + ", ".join(rs_str(x) for x in row) + "]" for row in data.SPELLS))
+out.append("pub const EPITHET_HERO: [(&str, &str); %d] = [%s];" % (len(data.EPITHET_HERO), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data.EPITHET_HERO.items())))
+out.append("pub const DEED_LEGACY: [(&str, &str); %d] = [%s];" % (len(data.DEED_LEGACY), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data.DEED_LEGACY.items())))
+from realm_of_ages import dungeons as _dg  # noqa: E402
+out.append("pub const DUNGEON_KINDS: [(&str, &[&str], &[&str]); %d] = [%s];" % (len(_dg.KINDS), ", ".join(
+    f"({rs_str(k)}, &[{', '.join(rs_str(x) for x in b)}], &[{', '.join(rs_str(x) for x in m)}])" for k, (b, m) in _dg.KINDS.items())))
+
+# ---- legends
+strs("CYCLE_TITLES", data2.CYCLE_TITLES); strs("OATH_A", data2.OATH_A)
+out.append("pub const LEGEND_MATERIALS: [(&str, &str); %d] = [%s];" % (len(data2.LEGEND_MATERIALS), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data2.LEGEND_MATERIALS.items())))
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")
 print(f"wrote src/tables.rs ({len(out)} lines)")

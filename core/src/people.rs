@@ -90,6 +90,16 @@ pub struct Character {
     pub marks: Vec<&'static str>,
     pub clan: usize,
     pub element: Option<&'static str>,
+    pub last_deed: Option<&'static str>,
+    pub rite_ready: i64,
+    pub peak_cr: f64,
+    pub seal: Option<usize>,
+    pub merit: f64,
+    pub party: usize,
+    pub pending: Option<(usize, usize, f64)>,   // (state, action, renown before)
+    pub kills: u32,
+    pub beyond_ready: i64,
+    pub posted: f64,
     pub guilds: Vec<usize>,
     pub guild_rank: Option<&'static str>,
     pub extra: [f64; 6],                  // legacy, class effects and perks on the six stats, refreshed yearly
@@ -141,6 +151,7 @@ pub struct House {
     pub track: String,
     pub legacy: f64,
     pub origin: String,
+    pub cursed: bool,
 }
 
 pub struct Town {
@@ -205,6 +216,12 @@ pub struct Town {
     pub occupied_by: usize,
     pub trade: f64,
     pub guard: f64,
+    pub threat: f64,
+    pub raided: Option<&'static str>,
+    pub raided_by: usize,
+    pub raided_year: i64,
+    pub game: f64,
+    pub curse_mult: f64,
 }
 
 pub struct Epidemic {
@@ -315,6 +332,20 @@ pub struct Realm {
     pub bodyguard: bool,
     pub faith: usize,
     pub persecuting: bool,
+    pub mods: Vec<(&'static str, f64, i64)>,      // (key, value, until year)
+    pub parts: [f64; 4],                          // hide ash horn scale
+    pub scrolls: [f64; 11],
+    pub scroll_power: f64,
+    pub top_scroll: usize,
+    pub bound_share: f64,
+    pub trade_shock: i64,
+    pub dragons: u32,
+}
+
+impl Realm {
+    pub fn modv(&self, key: &str, year: i64) -> f64 {
+        self.mods.iter().find(|m| m.0 == key && m.2 >= year).map(|m| m.1).unwrap_or(1.0)
+    }
 }
 
 pub struct Court {
@@ -457,6 +488,36 @@ pub struct Monster {
     pub landmass: i32,
     pub world: bool,
     pub slain_by: usize,
+    // lineage (monsters.new_lineage_fields)
+    pub lifespan: f64,
+    pub adult_base: f64,
+    pub parents: Vec<usize>,
+    pub generation: u32,
+    pub children: Vec<usize>,
+    pub title: Option<&'static str>,
+    pub kills: u32,
+    pub traits: Vec<&'static str>,
+    // dragons
+    pub size: Option<f64>,
+    pub temper: &'static str,
+    pub settled: i64,
+    pub game0: Option<f64>,
+    pub hungry: u32,
+    pub tributaries: Vec<(usize, i64, usize)>,   // (realm, since, payer)
+    pub wrath: Vec<(usize, i64)>,
+    pub fled: Option<i64>,
+    pub fled_told: Option<i64>,
+    pub wild_ready: i64,
+    // the rest of the world's dealings with it
+    pub gate: bool,
+    pub crashed: bool,
+    pub sea: bool,
+    pub spilled: bool,
+    pub bounties: Vec<(usize, f64)>,
+    pub species: Option<String>,
+    pub eco_cell: usize,
+    pub cycle: usize,
+    pub sealed: bool,
 }
 
 pub struct SocGuild {
@@ -505,6 +566,24 @@ pub struct Ruin {
     pub riches: i64,
     pub depth: f64,
     pub loot: Vec<usize>,
+    // the dungeon (dungeons.ensure)
+    pub kind: &'static str,
+    pub floors: usize,
+    pub grand: bool,
+    pub floor: usize,
+    pub conquered: Option<i64>,
+    pub conquests: Vec<(i64, usize, String)>,
+    pub minis: Vec<(usize, String, f64)>,
+    pub boss: (String, f64, bool),
+    pub reinfest: i64,
+    pub stocked: bool,
+}
+
+impl Ruin {
+    pub fn new(name: String, pos: (usize, usize), riches: i64, depth: f64) -> Self {
+        Ruin { name, pos, riches, depth, loot: vec![], kind: "", floors: 0, grand: false, floor: 0, conquered: None, conquests: vec![],
+               minis: vec![], boss: (String::new(), 0.0, true), reinfest: i64::MAX, stocked: false }
+    }
 }
 
 pub fn gene(name: &str) -> usize {

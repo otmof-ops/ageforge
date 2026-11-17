@@ -738,7 +738,7 @@ impl State {
 
     // ------------------------------------------------------------ borders, diplomacy, frontier battles
     /// Touching realms and town pairs on the frontier; the towns trade across peaceful borders.
-    pub fn borders_and_diplomacy(&mut self) {
+    pub fn borders_and_diplomacy_with(&mut self, _trade: bool) -> Vec<(usize, usize)> {
         let n = self.realms.len();
         for t in self.towns.iter_mut() { t.trade = 0.0; }
         let (h, w) = (self.map.h, self.map.w);
@@ -813,13 +813,17 @@ impl State {
                 self.towns[a].wealth += 2.0; self.towns[b].wealth += 2.0;
             }
         }
-        self.frontier_battles(pairs.into_iter().collect());
+        pairs.into_iter().collect()
     }
 
-    fn frontier_battles(&mut self, mut pairs: Vec<(usize, usize)>) {
+    /// Frontier battles between towns of realms at war, with the heroes' strength behind each side (world.battles).
+    pub fn frontier_year(&mut self, mut pairs: Vec<(usize, usize)>, war_power: Vec<f64>) -> Vec<u32> {
+        let mut won = vec![0u32; self.realms.len()];
         let n = self.realms.len();
         let mut fpop = vec![0.0; n];
         for t in self.towns.iter().filter(|t| t.alive) { fpop[t.realm] += t.pop; }
+        let y = self.year;
+        let hero_mult: Vec<f64> = (0..n).map(|f| 1.0 + (war_power.get(f).copied().unwrap_or(0.0) * self.realms[f].modv("war_power", y) / (fpop[f] * 0.1).max(1.0)).min(1.5)).collect();
         for i in (1..pairs.len()).rev() { let j = self.rng.integers(0, i as i64 + 1) as usize; pairs.swap(i, j); }
         let mut fought = std::collections::HashSet::new();
         for (a, b) in pairs {
@@ -833,8 +837,8 @@ impl State {
             let (fa, fd) = (self.towns[at].realm, self.towns[de].realm);
             let (ca, cd) = (self.realms[fa].people, self.realms[fd].people);
             let (sa, sd) = (&self.towns[at], &self.towns[de]);
-            let pa = sa.pop * 0.3 * MARTIAL[ca] * (1.0 + 0.5 * sa.magic) * self.realms[fa].battle_mult;
-            let pd = sd.pop * 0.3 * MARTIAL[cd] * (1.0 + 0.5 * sd.magic) * (1.0 + 0.3 * sd.walls as f64) * DEFENSE[cd] * self.realms[fd].battle_mult + sd.guard + sd.garrison;
+            let pa = sa.pop * 0.3 * MARTIAL[ca] * (1.0 + 0.5 * sa.magic) * hero_mult[fa] * self.realms[fa].battle_mult;
+            let pd = sd.pop * 0.3 * MARTIAL[cd] * (1.0 + 0.5 * sd.magic) * (1.0 + 0.3 * sd.walls as f64) * DEFENSE[cd] * hero_mult[fd] * self.realms[fd].battle_mult + sd.guard + sd.garrison;
             let ra = pa * self.rng.uniform(0.6, 1.4);
             let rd = pd * self.rng.uniform(0.6, 1.4);
             let frac = ra / (ra + rd + 1e-9);
@@ -843,7 +847,9 @@ impl State {
             self.towns[de].pop -= ld;
             self.weariness[fa][fd] += la / fpop[fa].max(1.0);
             self.weariness[fd][fa] += ld / fpop[fd].max(1.0);
+            if ra <= rd { won[fd] += 1; }
             if ra > rd {
+                won[fa] += 1;
                 let weak = self.towns[de].pop < self.towns[at].pop * 0.7;
                 self.battle_result(fa, fd, if weak { de } else { NONE });
                 if weak && self.rng.random() < 0.08 {
@@ -881,6 +887,7 @@ impl State {
                 self.kill_by(r, format!("fell leading the host against the {foe}"), false, by);
             }
         }
+        won
     }
 
     pub fn destroy(&mut self, s: usize) {
@@ -889,17 +896,20 @@ impl State {
         let name = format!("the ruins of {}", self.towns[s].name);
         let riches = 1 + ((self.towns[s].wealth / 40.0) as i64).min(5);
         let depth = 1.0 + self.towns[s].walls as f64 * 0.4;
-        self.ruins.push(Ruin { name, pos: self.towns[s].pos, riches, depth, loot: vec![] });
+        self.ruins.push(Ruin::new(name, self.towns[s].pos, riches, depth));
     }
 
     /// Blight, abandoned towns, realms whose last town has fallen, seats lost (world.events, world.cleanup).
-    pub fn events_and_cleanup(&mut self) {
+    pub fn events_and_blight(&mut self) {
         if self.blight > 0 { self.blight -= 1; }
         else if self.rng.random() < 0.008 {
             self.blight = self.rng.integers(1, 4);
             let text = format!("Blight. The harvests fail across the land for {} year{}.", self.blight, if self.blight > 1 { "s" } else { "" });
             self.say(text, false);
         }
+    }
+
+    pub fn cleanup(&mut self) {
         let gone: Vec<usize> = (0..self.towns.len()).filter(|&t| self.towns[t].alive && self.towns[t].pop < 15.0).collect();
         for &s in &gone { self.destroy(s); }
         if !gone.is_empty() {

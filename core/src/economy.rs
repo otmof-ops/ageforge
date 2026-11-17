@@ -4,6 +4,7 @@
 //! Systems that later slices bring (culture innovations, buildings, masters, trade, garrisons, monsters' threat,
 //! the bound dead, occupation) enter here at their year-0 values: none yet.
 
+use crate::people::NONE;
 use crate::state::State;
 use crate::tables::*;
 
@@ -90,8 +91,14 @@ impl State {
         let food_tech: Vec<f64> = self.cultures.iter().map(|c| c.total("food")).collect();
         let rest_bonus: Vec<f64> = self.cultures.iter().map(|c| 0.006 * c.innovations.contains("Two-Field Rotation") as u8 as f64
             + 0.01 * c.innovations.contains("Three-Field Rotation") as u8 as f64 + 0.004 * c.innovations.contains("Hunting Grounds") as u8 as f64).collect();
+        let y = self.year;
+        let food_mod: Vec<f64> = self.realms.iter().map(|k| k.modv("food", y)).collect();
+        let mut seed = vec![1.0; self.realms.len()];
+        for c in self.chars.iter().filter(|c| c.alive && c.hero) { if c.items.iter().any(|&i| self.items[i].special == Some("food")) && c.realm < seed.len() { seed[c.realm] = 1.2; } }
+        let god: Vec<Option<f64>> = (0..self.realms.len()).map(|k| self.god_harvest.iter().find(|g| g.0 == k && g.2 >= y).map(|g| g.1)).collect();
+        let tiers: Vec<f64> = self.realms.iter().map(|k| k.realm_tier as f64).collect();
         for &i in &live {
-            let realm_tier = 0.0;
+            let realm_tier = tiers[self.towns[i].realm];
             let s = &mut self.towns[i];
             s.cells = cells[i];
             s.magic = MAGIC[s.culture] * (mana[i] / 5.0).min(1.0) * (1.0 + 0.1 * realm_tier);
@@ -108,7 +115,9 @@ impl State {
             let rest = 0.01 + rest_bonus[s.culture];
             s.soil = (s.soil - wear + rest * (1.05 - s.soil)).clamp(0.5, 1.1);
             let harvest = self.climate.at(&self.climate.harvest, s.pos);
-            let mut prod = base * s.soil * harvest * tech * magic * (1.0 + rf);
+            let occupied = if s.occupied_by != NONE { 0.6 } else { 1.0 };
+            let mut prod = base * s.soil * harvest * tech * magic * food_mod[s.realm] * seed[s.realm] * s.curse_mult * (1.0 + s.game) * (1.0 + rf) * occupied;
+            if let Some(g) = god[s.realm] { prod *= g; }
             prod *= 0.55 + 0.45 * s.farm_fill.min(1.0);
             s.food_prod = prod;
             s.food = prod;
@@ -218,6 +227,22 @@ impl State {
     /// Jobs, workers, skill and output for every town; income, wealth, walls, the classes; the idle move to work.
     fn labour_year(&mut self, terr_wealth: &[f64], res: &[Vec<(usize, u32)>]) {
         let walls_caps: Vec<u32> = (0..self.realms.len()).map(|k| self.walls_cap(k)).collect();
+        let bound_share: Vec<f64> = self.realms.iter().map(|k| k.bound_share).collect();
+        // masters teach their trade in their town; the gifted lift it (markets.masters_by_town)
+        let n = self.towns.len();
+        let mut teaching = vec![[0.0f64; 7]; n];
+        let mut town_gifts: Vec<Vec<&'static str>> = vec![vec![]; n];
+        let sector = |p: &str| match p { "smith" | "enchanter" | "alchemist" | "shipwright" => 2, "merchant" | "captain" => 3, "priest" => 4, "thief" | "assassin" | "bandit" => 5, _ => 6 };
+        let pskill = |p: &str| match p { "smith" => Some("Smithing"), "enchanter" => Some("Enchanting"), "alchemist" => Some("Alchemy"), "shipwright" => Some("Seamanship"),
+                                          "merchant" => Some("Mercantile"), "captain" => Some("Navigation"), "priest" => Some("Speech"), _ => None };
+        for c in self.chars.iter().filter(|c| c.alive && c.home != NONE && c.home < n) {
+            if let Some(g) = c.gift { town_gifts[c.home].push(GIFTS[g]); }
+            let master = match c.profession { Some(p) => pskill(p).map(|s| (sector(p), c.skills[crate::power::skill_ix(s)])),
+                                              None => { let t = self.tier(c); if t >= 3 { Some((6, t as f64 * 10.0)) } else { None } } };
+            if let Some((sct, sk)) = master {
+                teaching[c.home][sct] += sk / 100.0 * 0.12 * if c.gift.is_some_and(|g| GIFTS[g] == "Forgeheart") { 2.0 } else { 1.0 };
+            }
+        }
         // what each people's learning makes of each trade (markets.culture_targets)
         let targets: Vec<[f64; 7]> = (0..4).map(|p| {
             let mut t = PEOPLE_SKILL[p];
@@ -245,6 +270,7 @@ impl State {
             let s = &mut self.towns[i];
             let working = WORKING * s.pop;
             let soldiers = (working * 0.08).min(0.25 * s.garrison);
+            let safe = 1.0 - (0.25 * s.threat).min(0.4);
             let b = s.bld;
             let bl = |i: usize| b[i] as f64;
             let free = working - soldiers;
@@ -259,6 +285,12 @@ impl State {
                 s.pop * 0.05 * st,
                 s.pop * 0.004 * MAGIC[culture] * (1.0 + s.magic.min(2.0)) * (1.0 + 0.5 * bl(B_COLLEGE)),
             ];
+            let mut jobs = jobs;
+            let bound = bound_share[k] * working;
+            let b_farm = bound.min(0.6 * jobs[0]);
+            let b_mine = (bound - b_farm).min(0.6 * jobs[1]);
+            jobs[0] -= b_farm;
+            jobs[1] -= b_mine;
             let demand: f64 = jobs.iter().sum();
             let (filled, idle, short) = if demand <= free {
                 (jobs, free - demand, 0.0)
@@ -275,24 +307,27 @@ impl State {
             s.farm_fill = filled[0] / jobs[0].max(1.0);
             s.labour_short = short;
             let mut sk = s.skill.unwrap_or(PEOPLE_SKILL[culture]);
-            // (masters teaching their trade join with slice 5; innovations' skill with slice 4)
+            let teach = &teaching[i];
             let bld_of = [B_MILL, B_MINE, B_WORKSHOPS, B_MARKET, usize::MAX, usize::MAX, B_COLLEGE];
             for j in 0..7 {
                 let own = if bld_of[j] == usize::MAX { 0.0 } else { bl(bld_of[j]) };
-                let target = (targets[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j]).min(1.0);
+                let target = (targets[culture][j] + 0.03 * bl(B_SCHOOL) + 0.04 * own + boost[j] + teach[j].min(0.3)).min(1.0);
                 sk[j] += 0.06 * (target - sk[j]);
             }
             s.skill = Some(sk);
             let harvest = s.food_prod / s.pop.max(1.0);
             let arc = filled[6] / s.pop.max(1.0) * (0.6 + 0.8 * sk[6]);
             s.arcane = arc;
-            let mult = [(0.5 + 0.5 * harvest).min(1.6) * (1.0 + 0.08 * bl(B_MILL)), 1.0 + 0.12 * bl(B_MINE),
-                        1.0 + (25.0 * arc).min(0.2), 1.0 + 0.08 * bl(B_MARKET), 1.0, 1.0, 1.0];
+            let gifted = &town_gifts[i];
+            let mult = [(0.5 + 0.5 * harvest).min(1.6) * (1.0 + 0.08 * bl(B_MILL)) * safe * if gifted.contains(&"Greenhand") { 1.15 } else { 1.0 },
+                        (1.0 + 0.12 * bl(B_MINE)) * safe, 1.0 + (25.0 * arc).min(0.2),
+                        (1.0 + 0.1 * s.trade.min(10.0)) * (1.0 + 0.08 * bl(B_MARKET)) * safe * if gifted.contains(&"Appraiser") { 1.1 } else { 1.0 }, 1.0, 1.0, 1.0];
             let mut val = [0.0; 7];
             for j in 0..7 { val[j] = filled[j] * VALUE[j] * mult[j] * (0.6 + 0.8 * sk[j]) * UNIT; }
-            let value = val.iter().sum::<f64>() / UNIT + idle * IDLE_VALUE;
+            let bound_val = (b_farm * VALUE[0] + b_mine * VALUE[1]) * 0.84 * UNIT * safe;
+            let value = (val.iter().sum::<f64>() + bound_val) / UNIT + idle * IDLE_VALUE;
             s.labour_value = value * UNIT;
-            let real = value * UNIT + 0.3 * terr_wealth[i] + s.trade_gain;
+            let real = (value * UNIT + 0.3 * terr_wealth[i] + s.trade_gain) * if s.occupied_by != NONE { 0.6 } else { 1.0 };
             s.real_income = real;
             s.income = real;
             s.wealth = s.wealth * 0.96 + real;
@@ -308,7 +343,7 @@ impl State {
             let inc = [
                 vf * 0.8 + val[1] * 0.55 + val[2] * 0.3 + val[3] * 0.1 + val[5] * 0.6 + idle * IDLE_VALUE * UNIT + soldiers * 0.6 * UNIT,
                 vf * 0.2 + r_ * 0.1 + val[2] * 0.6 + val[3] * 0.6 + val[4] + val[5] * 0.4 + rest * 0.4 + val[6] * 0.6,
-                r_ * 0.9 + val[1] * 0.45 + val[2] * 0.1 + val[3] * 0.3 + rest * 0.6 + val[6] * 0.4,
+                r_ * 0.9 + val[1] * 0.45 + val[2] * 0.1 + val[3] * 0.3 + rest * 0.6 + val[6] * 0.4 + bound_val,
             ];
             let heads = [
                 filled[0] * 0.9 + filled[1] + filled[2] * 0.4 + filled[3] * 0.1 + filled[5] * 0.6 + idle + soldiers,

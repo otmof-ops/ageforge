@@ -29,6 +29,9 @@ impl State {
             }
         }
         self.heart_on_death(cid, by);
+        if self.chars[cid].hero { let p = self.chars[cid].people; self.hero_guilds[p].deaths_total += 1; }
+        let kh = if by != NONE { self.chars[by].house } else { NONE };
+        self.legends_on_death(cid, &cause, kh);
         self.inherit(cid, None);
         let k = self.chars[cid].realm;
         if k < self.realms.len() && self.realms[k].ruler == cid && !self.chars[cid].hero && !quiet {
@@ -143,6 +146,7 @@ impl State {
             let pid = if house != NONE && self.chars[dad].house == house { self.chars[dad].realm } else { self.chars[m].realm };
             let kid = self.make_character(pid, y, None, dad, m, house);
             self.heart_on_birth(kid);
+            self.legends_on_birth(kid);
             if !self.chars[m].undead && self.rng.random() < 0.012 { self.kill(m, "died in childbirth".into()); }
             if self.rng.random() < 0.16 { self.kill(kid, "died in infancy".into()); }
             if pid < self.realms.len() {
