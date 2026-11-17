@@ -1,19 +1,22 @@
 //! God mode (godmode.py): every act the player can take on the world, each written into the chronicle as an act of
 //! the gods. One dispatcher, so a world's history of acts can be replayed exactly.
 
-use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use serde::de::DeserializeOwned;
 
 use crate::people::*;
 
 use crate::state::State;
 use crate::tables::*;
 
-fn get<'py, T: FromPyObject<'py>>(a: &Bound<'py, PyDict>, k: &str) -> PyResult<T> {
-    a.get_item(k)?.ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(k.to_string()))?.extract()
+/// The arguments of an act, as JSON: what the record of a world stores, and what any front end can build.
+pub type Args = serde_json::Map<String, serde_json::Value>;
+
+fn get<T: DeserializeOwned>(a: &Args, k: &str) -> Result<T, String> {
+    let v = a.get(k).ok_or_else(|| format!("missing argument {k}"))?;
+    serde_json::from_value(v.clone()).map_err(|e| format!("argument {k}: {e}"))
 }
-fn opt<'py, T: FromPyObject<'py>>(a: &Bound<'py, PyDict>, k: &str) -> PyResult<Option<T>> {
-    match a.get_item(k)? { Some(v) if !v.is_none() => Ok(Some(v.extract()?)), _ => Ok(None) }
+fn opt<T: DeserializeOwned>(a: &Args, k: &str) -> Result<Option<T>, String> {
+    match a.get(k) { Some(v) if !v.is_null() => serde_json::from_value(v.clone()).map(Some).map_err(|e| format!("argument {k}: {e}")), _ => Ok(None) }
 }
 fn ptrait(name: &str) -> Option<usize> { PERSONALITY.iter().position(|p| *p == name) }
 
@@ -28,7 +31,7 @@ impl State {
         n
     }
 
-    fn set_trait(&mut self, c: usize, trait_: &str, on: bool) -> PyResult<String> {
+    fn set_trait(&mut self, c: usize, trait_: &str, on: bool) -> Result<String, String> {
         if let Some(t) = ptrait(trait_) {
             let opp = t ^ 1;
             let p = &mut self.chars[c].personality;
@@ -45,7 +48,7 @@ impl State {
                 for i in 0..6 { ch.attrs[i] -= fx[i]; }
                 ch.prowess -= fx[6]; ch.talent = (ch.talent - fx[7]).max(0.0); ch.life /= fx[8];
             }
-        } else { return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown trait {trait_}"))); }
+        } else { return Err(format!("unknown trait {trait_}")); }
         let t = format!("{} {} the trait {trait_}.", self.full(c), if on { "gains" } else { "loses" });
         Ok(self.god_say(t))
     }
@@ -59,7 +62,7 @@ impl State {
         }
     }
 
-    pub fn god_act(&mut self, act: &str, a: &Bound<'_, PyDict>) -> PyResult<String> {
+    pub fn god_act(&mut self, act: &str, a: &Args) -> Result<String, String> {
         let y = self.year;
         Ok(match act {
             "create_character" => {
@@ -101,7 +104,7 @@ impl State {
                         "prowess" => ch.prowess = v, "talent" => ch.talent = v.clamp(0.0, 10.0), "renown" => ch.renown = v, "gold" => ch.gold = v,
                         "stress" => ch.stress = v, "happy" => ch.happy = v, "health" => ch.health = v, "life" => ch.life = v,
                         "level" => { let target = v as u32; if target > ch.level { self.raise_level(c, target); } else { let d = ch.level - target.max(1); ch.level = target.max(1); let last = ch.classes.last_mut().unwrap(); last.1 = last.1.saturating_sub(d).max(1); } }
-                        _ => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown stat {key}"))),
+                        _ => return Err(format!("unknown stat {key}")),
                     }
                 }
                 let t = format!("{}'s {key} is now {v}.", self.full(c));
@@ -110,7 +113,7 @@ impl State {
             "set_trait" => { let (c, t, on): (usize, String, bool) = (get(a, "c")?, get(a, "trait")?, get(a, "on")?); self.set_trait(c, &t, on)? }
             "set_class" => {
                 let (c, cls): (usize, String) = (get(a, "c")?, get(a, "cls")?);
-                let k = CLASSES.iter().position(|x| x.name == cls).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("unknown class {cls}")))?;
+                let k = CLASSES.iter().position(|x| x.name == cls).ok_or_else(|| format!("unknown class {cls}"))?;
                 self.chars[c].classes.push((k, 1));
                 let t = format!("{} takes up the class {cls}.", self.full(c));
                 self.god_say(t)
@@ -274,7 +277,7 @@ impl State {
                 self.god_say(t)
             }
             "god_note" => { let t: String = get(a, "text")?; self.god_say(t) }
-            _ => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown act {act}"))),
+            _ => return Err(format!("unknown act {act}")),
         })
     }
 }

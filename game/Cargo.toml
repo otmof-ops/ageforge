@@ -1,0 +1,18 @@
+[package]
+name = "ageforge"
+version = "0.1.0"
+edition = "2021"
+description = "Ageforge: play the Realm of Ages world in the terminal."
+license = "BSD-3-Clause"
+publish = false
+
+[[bin]]
+name = "ageforge"
+path = "src/main.rs"
+
+[dependencies]
+world = { package = "ageforge_core", path = "../core" }
+ratatui = "0.29"
+crossterm = "0.28"
+serde_json = "1"
+png = "0.17"

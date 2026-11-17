@@ -1,11 +1,11 @@
 #!/bin/sh
-# Build the Rust core (core/), the world the game runs on, and install it into the package. Needs Rust 1.80+ (rustup).
+# Build the Python extension of the world (realm_of_ages._core), which the reference engine's checks use.
+# Needs Rust 1.80+ (rustup). The game itself is bin/build-game.
 set -e
 here="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$here/core"
-python3 gen_tables.py
-cargo build --release
-# install by rename, never by overwriting: a game running on the old library keeps its copy instead of crashing
+cd "$here"
+cargo build --release -p ageforge_core --features python
+# install by rename, never by overwriting: a process running on the old library keeps its copy instead of crashing
 cp target/release/lib_core.so "$here/realm_of_ages/_core.abi3.so.new"
 mv -f "$here/realm_of_ages/_core.abi3.so.new" "$here/realm_of_ages/_core.abi3.so"
 echo "Rust core installed: realm_of_ages/_core.abi3.so"
