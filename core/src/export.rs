@@ -295,7 +295,7 @@ impl State {
         s.set_item("op_mods", op)?;
         let works: Vec<Bound<PyDict>> = self.works.iter().map(|w| d!(py, "id" => w.id, "kind" => w.kind, "title" => &w.title, "maker" => w.maker,
             "year" => w.year, "subject" => &w.subject, "quality" => w.quality, "realm" => o(w.realm), "town" => o(w.town), "house" => o(w.house),
-            "holder" => o(w.holder), "hero" => o(w.hero), "sector" => crate::works::sector_name(w.sector), "copies" => w.copies.clone(),
+            "holder" => o(w.holder), "hero" => o(w.hero), "sector" => crate::works::sector_name(w.sector), "faith" => o(w.faith), "field" => w.field, "copies" => w.copies.clone(),
             "lost" => w.lost, "history" => w.history.clone())).collect();
         s.set_item("works", works)?;
         let ledger = PyDict::new(py);

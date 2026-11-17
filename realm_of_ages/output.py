@@ -503,7 +503,7 @@ def write_works(realm, path):
     def where(w):
         if w.lost is not None:
             return f"lost (year {w.lost})"
-        if w.kind in ("treatise", "chronicle", "epic"):
+        if w.kind in ("treatise", "chronicle", "epic", "scripture", "theology", "philosophy"):
             return f"{len(w.copies)} cop{'y' if len(w.copies) == 1 else 'ies'}"
         k = realm.kingdoms[w.realm].name if w.realm is not None else "no one"
         if w.kind == "heirloom":
@@ -514,17 +514,26 @@ def write_works(realm, path):
         return "; ".join(f"{y}: {t}" for y, t in w.history)
     gifted = [c for c in chars.values() if c.alive and "artistic" in c.genetic]
     L = ["# Works", "", "Only the gifted make art and books: the artistic, about one birth in seventy, and the gift runs in "
-         "families. Lesser pieces are made, sold and forgotten; these are the ones the world kept.", "",
+         "families. Devout makers write holy books, which draw every town that keeps a copy toward their faith; a new "
+         "faith's founder leaves its scripture. Natural philosophy comes from the learned among the gifted and from "
+         "learned geniuses: medicine saves lives, agronomy raises yields, astronomy times the sowing, mathematics and "
+         "engineering raise houses faster, alchemy lifts the arcane trades, and all of it feeds its people's research. "
+         "Lesser pieces are made, sold and forgotten; these are the ones the world kept.", "",
          f"{len(works)} works remembered ({sum(1 for w in works if w.lost is None)} still in the world); "
          f"{len(gifted)} artistic people living.", ""]
     sections = [("Monuments", ("monument",)), ("Masterpieces", ("painting", "carving", "tapestry", "song")),
-                ("Books", ("chronicle", "epic", "treatise")), ("Heirlooms", ("heirloom",))]
+                ("Books", ("chronicle", "epic", "treatise")), ("Holy books", ("scripture", "theology")),
+                ("Natural philosophy", ("philosophy",)), ("Heirlooms", ("heirloom",))]
     for name, kinds in sections:
         ws = sorted((w for w in works if w.kind in kinds), key=lambda w: -w.quality)
         L += [f"## {name} ({len(ws)})", ""]
         for w in ws[:40]:
             maker = "" if w.kind == "heirloom" else f" by {who(w.maker)}, year {w.year}"
-            about = f"Of {w.subject}." if w.kind != "treatise" else f"Teaches {w.sector}."
+            faith = realm.religions[w.faith].name if getattr(w, "faith", None) is not None and w.faith < len(realm.religions) else None
+            about = (f"Teaches {w.sector}." if w.kind == "treatise" else
+                     f"On {w.field}." if w.kind == "philosophy" else
+                     f"Scripture of {faith}." if w.kind == "scripture" else
+                     f"Of {w.subject}.")
             L += [f"- **{w.title}** ({w.kind}{maker}; {where(w)}). {about}",
                   f"  History: {history(w)}"]
         if not ws:

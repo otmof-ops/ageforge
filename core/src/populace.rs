@@ -104,8 +104,9 @@ impl State {
         // healers: priests and masters of restoration (professions and the physician join with slice 5)
         let resto = crate::stewardship::skill("Restoration");
         let mut heal = vec![0.0; self.realms.len()];
-        for c in &self.chars { if c.alive && c.realm < heal.len() && c.skills[resto] >= 70.0 { heal[c.realm] += 0.04; } }
+        for c in self.living.iter().map(|&i| &self.chars[i]) { if c.alive && c.realm < heal.len() && c.skills[resto] >= 70.0 { heal[c.realm] += 0.04; } }
         for h in heal.iter_mut() { *h = f64::min(0.4, *h); }
+        let learning = self.learning_in();
         for e in live {
             let front = std::mem::take(&mut self.epidemics[e].front);
             let (fat, spread) = (self.epidemics[e].fatality, self.epidemics[e].spread);
@@ -115,7 +116,7 @@ impl State {
                 let s = &self.towns[tid];
                 let attack = (load * (1.0 - s.immune) * 3.0 * (1.0 + s.crowded.min(1.0))).min(0.9);
                 let mend = (20.0 * s.arcane).min(0.3);
-                let dead = s.pop * attack * fat * (1.0 - (heal[s.realm] + mend).min(0.7));
+                let dead = s.pop * attack * fat * (1.0 - (heal[s.realm] + mend + 0.05 * learning[tid][0]).min(0.7));
                 let (pos, port, realm) = (s.pos, s.port, s.realm);
                 let s = &mut self.towns[tid];
                 s.pop -= dead;

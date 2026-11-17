@@ -24,6 +24,8 @@ pub struct Work {
     pub holder: usize, // for heirlooms, who carries it now
     pub hero: usize,   // for epics, the hero sung
     pub sector: usize, // for treatises, the trade it teaches (index of the town's sectors)
+    pub faith: usize,  // for holy books, the faith they carry
+    pub field: &'static str, // for natural philosophy: medicine, agronomy, astronomy, mathematics, engineering, alchemy
     pub copies: Vec<usize>, // for books: the towns holding a copy
     pub lost: Option<i64>,
     pub ruin: usize,   // where a lost work lies, if anywhere
@@ -87,7 +89,7 @@ impl State {
         let id = self.works.len();
         let y = self.year;
         self.works.push(Work { id, kind, title, maker, year: y, subject, quality, realm, town, house: NONE, holder: NONE, hero: NONE,
-                               sector: usize::MAX, copies: vec![], lost: None, ruin: NONE, history: vec![] });
+                               sector: usize::MAX, faith: NONE, field: "", copies: vec![], lost: None, ruin: NONE, history: vec![] });
         id
     }
 
@@ -96,6 +98,7 @@ impl State {
     pub fn works_year(&mut self) {
         let y = self.year;
         self.art_year(y);
+        self.holy_books_year();
         self.monuments_year(y);
         self.heirlooms_year(y);
         self.fates_year(y);
@@ -104,9 +107,10 @@ impl State {
     /// The gifted at work: art, songs and books.
     fn art_year(&mut self, y: i64) {
         let g = gene("artistic");
+        let genius = gene("genius");
         let makers: Vec<usize> = self.living.iter().copied().filter(|&i| {
             let c = &self.chars[i];
-            c.alive && c.has(g) && c.adult(y) && c.jailed_until <= y && !c.undead && c.realm < self.realms.len()
+            c.alive && (c.has(g) || c.has(genius) && c.attr(4, y) >= 18.0) && c.adult(y) && c.jailed_until <= y && !c.undead && c.realm < self.realms.len()
         }).collect();
         for c in makers {
             // a working life: the gifted finish something worth keeping once in forty or fifty years, a master more often
@@ -116,12 +120,32 @@ impl State {
             let p = self.chars[c].people;
             let learned = self.chars[c].attr(4, y);
             let writing = self.cultures[p].era >= 1;
-            let kind = if writing && learned >= 14.0 && self.rng.random() < 0.35 {
+            let gifted = self.chars[c].has(g);
+            let devout = self.chars[c].profession == Some("priest") || self.chars[c].has_trait("zealous");
+            let kind = if !gifted {
+                // a learned genius without the artist's gift writes only what can be reasoned out
+                if !writing || self.rng.random() > 0.4 { continue; }
+                "philosophy"
+            } else if writing && devout && self.rng.random() < 0.5 {
+                "theology"
+            } else if writing && learned >= 16.0 && self.rng.random() < 0.15 {
+                "philosophy"
+            } else if writing && learned >= 14.0 && self.rng.random() < 0.35 {
                 if self.rng.random() < 0.4 { "treatise" } else if self.rng.random() < 0.5 { "chronicle" } else { "epic" }
             } else {
                 let arts = ARTS[p];
                 arts[self.rng.weighted(&[0.55, 0.3, 0.15])]
             };
+            // natural philosophy turns on what its author knows best
+            let field = if kind == "philosophy" {
+                let sk = &self.chars[c].skills;
+                let top = (0..sk.len()).max_by(|&a, &b| sk[a].partial_cmp(&sk[b]).unwrap()).unwrap_or(0);
+                match SKILLS[top] {
+                    "Restoration" => "medicine", "Alchemy" | "Enchanting" => "alchemy", "Navigation" | "Seamanship" => "astronomy",
+                    "Smithing" | "Heavy Armor" | "Block" => "engineering", "Mercantile" => "mathematics", "Beast Taming" => "agronomy",
+                    _ => ["medicine", "agronomy", "astronomy", "mathematics", "engineering", "alchemy"][self.rng.integers(0, 6) as usize],
+                }
+            } else { "" };
             let mut q = self.quality_of(c);
             let (stem, subject, hero) = self.subject_for(k, c);
             // a patron: the crown pays for the best, and keeps them at court
@@ -135,7 +159,28 @@ impl State {
             let town = if patron { NONE } else if home != NONE && self.towns[home].alive { home } else { self.capital_of(k) };
             let mn = self.chars[c].name.clone();
             let st = title_case(&stem);
+            let faith = self.chars[c].religion;
             let title = match kind {
+                "theology" => {
+                    let rl = &self.religions[faith.min(self.religions.len() - 1)];
+                    let tenet = if rl.tenets.is_empty() { "faith" } else { rl.tenets[self.rng.integers(0, rl.tenets.len() as i64) as usize] };
+                    match self.rng.integers(0, 3) {
+                        0 => format!("Sermons on {}", title_case(tenet)),
+                        1 => format!("The Teachings of {}", rl.deity),
+                        _ => format!("The Life of {}", if rl.founder != NONE { self.chars[rl.founder].name.clone() } else { format!("the First Servant of {}", rl.deity) }),
+                    }
+                }
+                "philosophy" => {
+                    let opts: [&str; 3] = match field {
+                        "medicine" => ["The Canon of Healing", "On Fevers and Their Cure", "Of the Humours of the Body"],
+                        "agronomy" => ["On the Tilling of Fields", "Of Seed, Soil and Season", "On the Keeping of Herds"],
+                        "astronomy" => ["On the Motions of the Stars", "Tables of the Wandering Lights", "Of the Calendar and the Moon"],
+                        "mathematics" => ["The Book of Numbers and Measures", "On Proportion", "Of Reckoning and Figures"],
+                        "engineering" => ["Of Arches, Engines and Walls", "On Mills and Waterwheels", "Of Bridges and Vaults"],
+                        _ => ["On the Transmutation of Matter", "Of the Essences of Things", "On the Fire and the Vessel"],
+                    };
+                    opts[self.rng.integers(0, 3) as usize].to_string()
+                }
                 "treatise" => {
                     let best = (0..self.chars[c].skills.len()).max_by(|&a, &b| self.chars[c].skills[a].partial_cmp(&self.chars[c].skills[b]).unwrap()).unwrap_or(14);
                     format!("On {}", SKILLS[best])
@@ -147,10 +192,17 @@ impl State {
                 "tapestry" => format!("The Tapestry of {st}"),
                 _ => cap_first(&st),
             };
-            let subject = if kind == "treatise" { format!("the craft its author mastered") } else if kind == "chronicle" { format!("the history of {} up to year {y}", self.realms[k].name) } else { subject };
+            // a title already taken is known by its author's name, as such books were
+            let title = if self.works.iter().any(|w| w.title == title) { format!("{title} of {mn}") } else { title };
+            let subject = if kind == "theology" { format!("the teachings of {}", self.religions[faith.min(self.religions.len() - 1)].name) }
+                else if kind == "philosophy" { format!("{field}, as its author reasoned it out") }
+                else if kind == "treatise" { format!("the craft its author mastered") } else if kind == "chronicle" { format!("the history of {} up to year {y}", self.realms[k].name) } else { subject };
             let w = self.add_work(kind, title.clone(), c, subject, q, k, town);
             self.works[w].hero = if kind == "epic" { hero } else { NONE };
-            if matches!(kind, "treatise" | "chronicle" | "epic") {
+            self.works[w].faith = if kind == "theology" { faith } else { NONE };
+            self.works[w].field = field;
+            if kind == "philosophy" { self.works[w].sector = match field { "alchemy" => 6, "engineering" => 2, "mathematics" => 3, "medicine" => 4, _ => usize::MAX }; }
+            if matches!(kind, "treatise" | "chronicle" | "epic" | "scripture" | "theology" | "philosophy") {
                 let at = if town != NONE { town } else { self.capital_of(k) };
                 if at != NONE { self.works[w].copies.push(at); }
                 if kind == "treatise" {
@@ -167,7 +219,7 @@ impl State {
                 self.books.push((k, "patronage", -fee, title.clone(), c));
             }
             let fame = q * if patron { 1.5 } else { 1.0 };
-            self.gain_fame(c, "artist", fame);
+            self.gain_fame(c, if kind == "philosophy" { "scholar" } else if kind == "theology" { "prophet" } else { "artist" }, fame);
             if kind == "epic" && hero != NONE && self.chars[hero].alive {
                 // a hero sung is a hero remembered: the song carries their deeds into their line's legacy
                 let top = self.chars[hero].legacy.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|x| x.0).unwrap_or(0);
@@ -184,10 +236,11 @@ impl State {
         }
         // books are copied by scribes where learning is kept, and travel along the roads of trade
         for w in 0..self.works.len() {
-            if self.works[w].lost.is_some() || !matches!(self.works[w].kind, "treatise" | "chronicle" | "epic") { continue; }
+            if self.works[w].lost.is_some() || !matches!(self.works[w].kind, "treatise" | "chronicle" | "epic" | "scripture" | "theology" | "philosophy") { continue; }
+            let holy = matches!(self.works[w].kind, "scripture" | "theology");
             let n = self.works[w].copies.len();
-            if n == 0 || n >= 40 { continue; }
-            if self.rng.random() > 0.06 * (self.works[w].quality / 50.0) { continue; }
+            if n == 0 || n >= if holy { 120 } else { 40 } { continue; }
+            if self.rng.random() > 0.06 * (self.works[w].quality / 50.0) * if holy { 2.0 } else { 1.0 } { continue; }
             let from = self.works[w].copies[self.rng.integers(0, n as i64) as usize];
             if !self.towns[from].alive { continue; }
             let fp = self.towns[from].pos;
@@ -329,7 +382,7 @@ impl State {
                             self.works[w].ruin = NONE;
                             self.works[w].realm = k;
                             self.works[w].town = NONE;
-                            if matches!(kind, "treatise" | "chronicle" | "epic") { let c = self.capital_of(k); if c != NONE { self.works[w].copies = vec![c]; } }
+                            if matches!(kind, "treatise" | "chronicle" | "epic" | "scripture" | "theology" | "philosophy") { let c = self.capital_of(k); if c != NONE { self.works[w].copies = vec![c]; } }
                             let (hw, rn, ti) = (self.who(hero), self.ruins[r].name.clone(), self.works[w].title.clone());
                             self.note(w, format!("found again in {rn} by {hw}"));
                             let t = format!("{hw} brings {ti} out of {rn}, lost since year {}.", self.works[w].history.iter().rev().find(|h| h.1.starts_with("lost")).map(|h| h.0).unwrap_or(y));
@@ -339,7 +392,7 @@ impl State {
                 }
                 continue;
             }
-            if matches!(kind, "treatise" | "chronicle" | "epic") {
+            if matches!(kind, "treatise" | "chronicle" | "epic" | "scripture" | "theology" | "philosophy") {
                 let before = self.works[w].copies.len();
                 let burned: Vec<usize> = self.works[w].copies.iter().copied().filter(|&t| !self.towns[t].alive).collect();
                 self.works[w].copies.retain(|&t| self.towns[t].alive);
@@ -404,6 +457,45 @@ impl State {
         self.note(w, why);
     }
 
+    /// A new faith's words written down: the scripture its followers copy and carry.
+    pub fn write_scripture(&mut self, founder: usize, faith: usize, town: usize) {
+        let k = self.chars[founder].realm;
+        let deity = self.religions[faith].deity.clone();
+        let q = self.quality_of(founder).max(55.0);
+        let w = self.add_work("scripture", format!("The Book of {deity}"), founder, format!("the revelation of {}", self.religions[faith].name), q, k, town);
+        self.works[w].faith = faith;
+        self.works[w].copies.push(town);
+        let fname = self.chars[founder].name.clone();
+        self.note(w, format!("set down from the words of {fname} in {}", self.towns[town].name));
+    }
+
+    /// Holy books draw their towns toward the faith they carry, a little each year, as they are read aloud.
+    pub fn holy_books_year(&mut self) {
+        let mut pulls: Vec<(usize, usize, f64)> = vec![];
+        for w in &self.works {
+            if w.lost.is_some() || w.faith == NONE || w.faith >= self.religions.len() || self.religions[w.faith].dead { continue; }
+            for &t in &w.copies { if self.towns[t].alive { pulls.push((t, w.faith, 0.004 * w.quality / 100.0)); } }
+        }
+        for (t, f, a) in pulls { self.shift(t, f, a); }
+    }
+
+    /// Natural philosophy kept in each town, by field: (medicine, agronomy, astronomy, engineering), each capped at 2.
+    pub fn learning_in(&self) -> Vec<[f64; 4]> {
+        let mut out = vec![[0.0; 4]; self.towns.len()];
+        for w in &self.works {
+            if w.kind != "philosophy" || w.lost.is_some() { continue; }
+            let i = match w.field { "medicine" => 0, "agronomy" => 1, "astronomy" => 2, "engineering" | "mathematics" => 3, _ => continue };
+            for &t in &w.copies { out[t][i] = (out[t][i] + w.quality / 100.0).min(2.0); }
+        }
+        out
+    }
+
+    /// What a people's surviving natural philosophy adds to its research each year.
+    pub fn science_points(&self, people: usize) -> f64 {
+        self.works.iter().filter(|w| w.kind == "philosophy" && w.lost.is_none() && w.maker < self.chars.len() && self.chars[w.maker].people == people)
+            .map(|w| w.quality / 100.0 * (1.0 + (w.copies.len() as f64).ln_1p())).sum::<f64>().min(12.0)
+    }
+
     /// What the works add to a court: the eye of visitors (court grandeur).
     pub fn court_art(&self, k: usize) -> f64 {
         self.works.iter().filter(|w| w.realm == k && w.town == NONE && w.lost.is_none() && !matches!(w.kind, "heirloom" | "monument"))
@@ -414,7 +506,7 @@ impl State {
     pub fn treatises_in(&self) -> Vec<[f64; 7]> {
         let mut out = vec![[0.0; 7]; self.towns.len()];
         for w in &self.works {
-            if w.kind != "treatise" || w.lost.is_some() || w.sector >= 7 { continue; }
+            if !matches!(w.kind, "treatise" | "philosophy") || w.lost.is_some() || w.sector >= 7 { continue; }
             for &t in &w.copies { out[t][w.sector] += w.quality / 100.0; }
         }
         out

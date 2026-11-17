@@ -6,6 +6,7 @@ can be closed and opened again later; ending it writes the last books and marks 
 import json
 import os
 import re
+import threading
 import time
 
 import numpy as np
@@ -63,6 +64,10 @@ class Session:
         self.ev_index = 0
         self._mirror = None
         self.guild_rows = []
+        # the world can be read by one thread at a time: while years run on a worker, it holds this lock a year at a
+        # time, and the screens show the last finished view instead of reaching into a world that is mid-step
+        self.lock = threading.RLock()
+        self._running = None
 
     # ---------------- lifecycle
     @classmethod
@@ -106,7 +111,8 @@ class Session:
         return s
 
     def save(self):
-        self.meta["year"] = self.world.year
+        with self.lock:
+            self.meta["year"] = self.world.year
         self.meta["tracked"] = sorted(self.tracked)
         self.meta["journals"] = {str(k): v[-2000:] for k, v in self.journals.items()}
         tmp = os.path.join(self.path, "meta.json.tmp")
@@ -116,12 +122,16 @@ class Session:
 
     @property
     def realm(self):
-        """The world as the screens read it, rebuilt after any change."""
-        if self._mirror is None or self._mirror.year != self.world.year or self._dirty:
-            self._mirror = Mirror(self.world, self.tracked, self.journals, self.event_log, self.meta["seed"])
-            self._mirror._session = self
-            self._dirty = False
-        return self._mirror
+        """The world as the screens read it, rebuilt after any change. While years are running on another thread, the
+        screens get the last finished view (it is rebuilt when the run ends)."""
+        if self._mirror is not None and self._running is not None and self._running is not threading.current_thread():
+            return self._mirror
+        with self.lock:
+            if self._mirror is None or self._mirror.year != self.world.year or self._dirty:
+                self._mirror = Mirror(self.world, self.tracked, self.journals, self.event_log, self.meta["seed"])
+                self._mirror._session = self
+                self._dirty = False
+            return self._mirror
 
     _dirty = True
 
@@ -155,25 +165,32 @@ class Session:
         if self.meta.get("ended"):
             raise RuntimeError("this world has ended")
         self.stop = False
-        start, t0 = self.world.year, time.time()
-        for n in range(int(years)):
-            if self.stop:
-                break
-            self.world.step(1)
-            self.record(("step", 1))
-            self.flush()
-            y = self.world.year
-            if y % 10 == 0:
-                self.decade()
-            if y % 100 == 0:
-                from .output import render
-                render(self.realm, os.path.join(self.path, "maps", f"year-{y:05d}.png"))
-            if progress is not None:
-                progress(n + 1, int(years), Progress(y))
-        self.meta["advances"].append({"from": start, "to": self.world.year, "seconds": round(time.time() - t0, 1)})
-        self.save()
-        self.write_books()
-        return self.world.year - start
+        self._running = threading.current_thread()
+        try:
+            with self.lock:
+                start, t0 = self.world.year, time.time()
+            for n in range(int(years)):
+                if self.stop:
+                    break
+                with self.lock:
+                    self.world.step(1)
+                    self.record(("step", 1))
+                    self.flush()
+                    y = self.world.year
+                    if y % 10 == 0:
+                        self.decade()
+                    if y % 100 == 0:
+                        from .output import render
+                        render(self.realm, os.path.join(self.path, "maps", f"year-{y:05d}.png"))
+                if progress is not None:
+                    progress(n + 1, int(years), Progress(y))
+            with self.lock:
+                self.meta["advances"].append({"from": start, "to": self.world.year, "seconds": round(time.time() - t0, 1)})
+                self.save()
+                self.write_books()
+                return self.world.year - start
+        finally:
+            self._running = None
 
     def decade(self):
         """Every ten years: the hero guilds' tally for the decade, and where each tracked life stands."""
@@ -193,11 +210,12 @@ class Session:
 
     def god(self, act, args):
         """An act of the gods, done to the world and written into its record."""
-        out = self.world.god(act, args)
-        self.record(("god", act, args))
-        self.flush()
-        self._dirty = True
-        return out
+        with self.lock:
+            out = self.world.god(act, args)
+            self.record(("god", act, args))
+            self.flush()
+            self._dirty = True
+            return out
 
     def write_books(self):
         from . import output
@@ -225,7 +243,8 @@ class Session:
 
     def end(self):
         self.meta["ended"] = True
-        self.meta["ended_at"] = self.world.year
+        with self.lock:
+            self.meta["ended_at"] = self.world.year
         self.god("god_note", {"text": f"**The end of the world.** The chronicle closes in year {self.world.year}."})
         self.save()
         self.write_books()
