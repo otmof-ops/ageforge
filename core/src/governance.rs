@@ -169,6 +169,7 @@ impl State {
         let text = format!("{} purges the court: {} is dragged out and put to death.", self.who(r), self.who(v));
         self.say(text, false);
         self.remember_kin(v, r, "purged my kin", -60.0);
+        self.reluct(r, "execute", "the purges");
         let why = format!("was put to death in the purges of {} {}", self.chars[r].name, self.chars[r].regnal.clone().unwrap_or_default());
         self.kill_by(v, why, true, r);
         self.add_tyranny(r, 8.0, "the purges");

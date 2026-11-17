@@ -55,7 +55,7 @@ impl World {
                          realms: vec![], ruins: vec![], used_names: HashSet::new(), blocked: Grid::new(h, w, false),
                          owner: Grid::new(h, w, -1), relation, war: vec![], truce: vec![], duchies: Default::default(),
                          ktitles: Default::default(), breakaways: vec![], wars: vec![], war_since: vec![], weariness: vec![], armies: vec![],
-                         next_army: 0, war_log: vec![], battles_fought: vec![], sieges_won: 0, people_peak: [0; 4], recent_decl: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
+                         next_army: 0, war_log: vec![], battles_fought: vec![], sieges_won: 0, people_peak: [0; 4], recent_decl: vec![], avenge_goal: (NONE, NONE, NONE), items: vec![], monsters: vec![], item_names: Default::default(), greatest: vec![], stats_defaults: vec![], stats_forced: vec![], mined: 0.0,
                          bankruptcies: vec![], risings: vec![], epidemics: vec![], last_pandemic: -999, last_plague: -999, log: vec![],
                          climate: crate::climate::Climate::setup(&Grid::new(1, 1, 0i8), &mut Pcg64::from_state(0, 1)), blight: 0,
                          cultures: (0..4).map(crate::people::Culture::new).collect(),
@@ -145,17 +145,24 @@ impl World {
             self.st.realm_resources();
             self.st.land_year();
             self.st.expand();
+            self.st.refresh_stats();
             self.st.dynasty_year();
+            self.st.youth_year();
             self.st.govern_year();
             self.st.titles_year();
             self.st.civics_year();
+            self.st.courts_and_people_year();
             self.st.opinion_year();
+            self.st.meters_year();
+            self.st.hearts_year();
             self.st.statecraft_year();
             self.st.trade_year();
             self.st.money_year();
             self.st.manage_year();
             self.st.moods_year();
             self.st.plague_year();
+            self.st.spawn_specialists();
+            self.st.specialists_year();
             self.st.armies_year();
             self.st.borders_and_diplomacy();
             self.st.events_and_cleanup();

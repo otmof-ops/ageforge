@@ -66,6 +66,31 @@ pub struct Character {
     pub rival_ruler: usize,
     pub hooks: Vec<(usize, &'static str)>,
     pub rival: usize,
+    // the heart
+    pub stress: f64,
+    pub loves: Vec<(usize, &'static str, f64)>,     // (whom, kind, strength)
+    pub loved_by: Vec<usize>,
+    pub vendettas: Vec<(usize, i64, String)>,       // (whom, year, whom they lost)
+    pub grief: f64,
+    pub coping: Vec<&'static str>,
+    pub pet: Option<(&'static str, &'static str, i64, i64)>,  // kind, name, since, life
+    pub orientation: u8,                            // 0 straight, 1 gay, 2 bi
+    pub affair: usize,
+    // crafts, the court and youth
+    pub items: Vec<usize>,
+    pub fame: Vec<(&'static str, f64)>,
+    pub bounty: f64,
+    pub jailed_until: i64,
+    pub education: Option<(usize, usize)>,  // (focus: dip mar ste intr lrn, tier)
+    pub ls_xp: f64,
+    pub perk_list: Vec<(&'static str, &'static str, &'static str)>,
+    pub practice: u32,
+    pub tutored: f64,
+    pub trained_in: Option<usize>,
+    pub marks: Vec<&'static str>,
+    pub clan: usize,
+    pub element: Option<&'static str>,
+    pub extra: [f64; 6],                  // legacy, class effects and perks on the six stats, refreshed yearly
     pub alive: bool,
     pub died: Option<i64>,
     pub cause: Option<String>,
@@ -87,7 +112,7 @@ impl Character {
     /// A base stat as used (Character.attr): trained value, a point per fifteen levels, less the toll of age.
     /// Legacy, education, perks and class effects join here with slices 3 and 4.
     pub fn attr(&self, a: usize, year: i64) -> f64 {
-        let mut v = self.attrs[a] + (self.level / 15) as f64;
+        let mut v = self.attrs[a] + (self.level / 15) as f64 + self.extra[a];
         if a != 4 && a != 5 && !self.undead {
             let frac = self.age(year) as f64 / self.life.max(1.0);
             v -= ((frac - 0.66) * 25.0).max(0.0).floor();
@@ -275,6 +300,25 @@ pub struct Realm {
     pub sector_boost: [f64; 7],
     pub econ_prev_gdp: Option<f64>,
     pub goods: Vec<usize>,            // luxury and strategic resources held
+    pub market: Vec<usize>,
+    pub treasury: Vec<usize>,
+    pub soulstones: [u32; 5],
+    pub dragonbone: u32,
+    pub potions: f64,
+    pub arms: f64,
+    pub made: Vec<usize>,
+    pub court: Option<Court>,
+    pub court_mod: f64,
+    pub bodyguard: bool,
+}
+
+pub struct Court {
+    pub since: i64,
+    pub grandeur: f64,
+    pub amen: [u32; 4],
+    pub pos: Vec<(&'static str, usize)>,
+    pub kind: &'static str,
+    pub events: Vec<(i64, String)>,
 }
 
 pub struct Culture {
@@ -340,6 +384,7 @@ pub struct War {
     pub claimant: usize,
     pub start: i64,
     pub score: f64,
+    pub avenge: usize,
 }
 
 pub struct Army {
@@ -359,6 +404,56 @@ pub struct Army {
     pub done: bool,
 }
 
+pub struct Item {
+    pub name: String,
+    pub rarity: usize,
+    pub year: i64,
+    pub origin: String,
+    pub special: Option<&'static str>,
+    pub note: String,
+    pub bonus: f64,
+    pub desc: Option<String>,
+    pub enchants: Vec<(&'static str, &'static str)>,
+    pub kind: &'static str,          // weapon, armor, relic
+    pub maker: usize,
+    pub enchanter: usize,
+    pub value: f64,
+    pub mat_index: usize,
+    pub bearers: Vec<usize>,
+}
+
+impl Item {
+    pub fn new(name: String, rarity: usize, year: i64, origin: String) -> Self {
+        Item { name, rarity, year, origin, special: None, note: String::new(), bonus: RARITY_BONUS[rarity.min(6)], desc: None,
+               enchants: vec![], kind: "relic", maker: usize::MAX, enchanter: usize::MAX, value: 0.0, mat_index: 0, bearers: vec![] }
+    }
+    pub fn label(&self) -> String {
+        let mut extra = match &self.desc { Some(d) => format!(", {d}"), None => String::new() };
+        if !self.enchants.is_empty() {
+            extra += ", ";
+            extra += &self.enchants.iter().map(|(e, t)| format!("{t} {e}")).collect::<Vec<_>>().join(" and ");
+        }
+        format!("{} ({}{extra})", self.name, RARITY[self.rarity.min(6)])
+    }
+}
+
+pub struct Monster {
+    pub kind: &'static str,
+    pub name: String,
+    pub pos: (usize, usize),
+    pub alive: bool,
+    pub base: f64,
+    pub power: f64,
+    pub hoard: f64,
+    pub born: i64,
+    pub sleep_until: i64,
+    pub last_said: i64,
+    pub items: Vec<usize>,
+    pub landmass: i32,
+    pub world: bool,
+    pub slain_by: usize,
+}
+
 pub struct Reign {
     pub id: usize,
     pub start: i64,
@@ -374,6 +469,7 @@ pub struct Ruin {
     pub pos: (usize, usize),
     pub riches: i64,
     pub depth: f64,
+    pub loot: Vec<usize>,
 }
 
 pub fn gene(name: &str) -> usize {

@@ -60,6 +60,10 @@ impl State {
             let b = self.legacy_bonus(c, key);
             if b != 0.0 { apply(&mut m, idx, 1.0 + b); }
         }
+        for &it in &c.items {
+            match self.items[it].special { Some("tier") => apply(&mut m, TIER, 1.0), Some("guard") => apply(&mut m, 4, 2.0),
+                Some("magic") => apply(&mut m, MAGIC_K, 1.5), Some("vs_monster") => apply(&mut m, 5, 2.0), _ => {} }
+        }
         if c.has(gene("titanblood")) { apply(&mut m, PHYS, 1.3); }
         if c.has(gene("abyssblood")) { apply(&mut m, MAGIC_K, 1.3); }
         m
@@ -86,7 +90,8 @@ impl State {
              c.gift.is_some_and(|g| GIFTS[g] == "Iron Skin" || GIFTS[g] == "Born Captain") || c.has(gene("titanblood")) || c.has(gene("dragonblood")))
         } else {
             (self.eff_talent(c) / 10.0,
-             c.gift.is_some_and(|g| GIFTS[g] == "Mana Well") || c.has(gene("starblood")) || c.has(gene("abyssblood")))
+             c.gift.is_some_and(|g| GIFTS[g] == "Mana Well") || c.has(gene("starblood")) || c.has(gene("abyssblood"))
+                 || c.items.iter().any(|&i| self.items[i].special == Some("tier")))
         };
         let mut g = 3;
         if skill >= 0.6 && lv >= 22 {
@@ -106,7 +111,8 @@ impl State {
         let eff: f64 = c.classes.iter().map(|&(k, lv)| lv as f64 * CLASSES[k].magic.min(1.0)).sum();
         let base = if c.has(gene("abyssblood")) { (eff / 9.0) as i64 } else { ((eff / 9.0) as i64).min(self.eff_talent(c) as i64) };
         let well = c.gift.is_some_and(|g| GIFTS[g] == "Mana Well") as i64;
-        let cap = if c.custom { 10 } else { TIER_CAP[c.people] as i64 + c.has(gene("starblood")) as i64 } + well;
+        let tier_items = c.items.iter().filter(|&&i| self.items[i].special == Some("tier")).count() as i64;
+        let cap = if c.custom { 10 } else { TIER_CAP[c.people] as i64 + c.has(gene("starblood")) as i64 } + well + tier_items;
         let limit = self.power_gate(c, false);
         (base + self.mods(c)[TIER] as i64 + well).min(cap).min(limit).max(0)
     }
@@ -120,7 +126,7 @@ impl State {
     pub fn eff_prowess(&self, c: &Character) -> f64 {
         let frac = c.age(self.year) as f64 / c.life.max(1.0);
         let age_pen = if c.undead { 0.0 } else { ((frac - 0.66) * 25.0).max(0.0).floor() };
-        let v = c.prowess + self.legacy_bonus(c, "prowess") - age_pen;   // (court perks join with slice 4)
+        let v = c.prowess + self.legacy_bonus(c, "prowess") + crate::court::perk_value(c, "prowess") - age_pen;
         let v = if c.has(gene("titanblood")) { v } else { v.min(PROWESS_CAP[c.people]) };
         v * (1.0 + 0.04 * c.battle_arts as f64 + if c.lost_art { 0.15 } else { 0.0 })
     }
@@ -148,7 +154,9 @@ impl State {
             let mm = (1.0 + self.skill_val(c, sk) / 100.0 * 0.6 + 0.05 * Self::perk_count(c, sk)) * (1.0 + (a[1] + a[2] - 80.0) / 300.0);
             mag = 12.0 * 1.9f64.powi(t as i32) * mw * m[MAGIC_K] * mm;
         }
-        let v = (phys + mag) * (1.0 + 0.0 * m[EQUIP]);
+        let mut best: Vec<f64> = c.items.iter().map(|&i| self.items[i].bonus).collect();
+        best.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        let v = (phys + mag) * (1.0 + best.iter().take(4).sum::<f64>() * m[EQUIP]);
         if hp_matters { v * (0.5 + 0.5 * c.hp / 100.0) } else { v }
     }
 

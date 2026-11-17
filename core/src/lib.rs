@@ -9,10 +9,13 @@ use pyo3::prelude::*;
 
 mod civics;
 mod climate;
+mod court;
+mod crafts;
 mod economy;
 mod dynasty;
 mod geography;
 mod governance;
+mod heart;
 mod grid;
 mod opinion;
 mod people;

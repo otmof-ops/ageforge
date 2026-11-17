@@ -12,7 +12,7 @@ impl State {
         self.kill_by(cid, cause, false, NONE);
     }
 
-    pub fn kill_by(&mut self, cid: usize, cause: String, quiet: bool, _by: usize) {
+    pub fn kill_by(&mut self, cid: usize, cause: String, quiet: bool, by: usize) {
         if !self.chars[cid].alive { return; }
         let y = self.year;
         let c = &mut self.chars[cid];
@@ -28,6 +28,8 @@ impl State {
                 match kl.iter_mut().find(|x| x.0 == kind) { Some(x) => if pts * 0.5 > x.1 { x.1 = pts * 0.5 }, None => kl.push((kind, pts * 0.5)) }
             }
         }
+        self.heart_on_death(cid, by);
+        self.inherit(cid, None);
         let k = self.chars[cid].realm;
         if k < self.realms.len() && self.realms[k].ruler == cid && !self.chars[cid].hero && !quiet {
             let text = format!("{} {}, aged {}.", self.who(cid), cause, self.chars[cid].age(y));
@@ -140,6 +142,7 @@ impl State {
             let house = hs.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).map(|x| x.1).unwrap_or(NONE);
             let pid = if house != NONE && self.chars[dad].house == house { self.chars[dad].realm } else { self.chars[m].realm };
             let kid = self.make_character(pid, y, None, dad, m, house);
+            self.heart_on_birth(kid);
             if !self.chars[m].undead && self.rng.random() < 0.012 { self.kill(m, "died in childbirth".into()); }
             if self.rng.random() < 0.16 { self.kill(kid, "died in infancy".into()); }
             if pid < self.realms.len() {
@@ -193,6 +196,7 @@ impl State {
     fn marry(&mut self, a: usize, b: usize) {
         self.chars[a].spouse = b;
         self.chars[b].spouse = a;
+        self.heart_on_marriage(a, b);
     }
 
     fn marriages(&mut self, k: usize) {
@@ -278,9 +282,10 @@ impl State {
         let (house, regent) = (self.realms[k].house, self.realms[k].regent);
         let plotters: Vec<usize> = self.adults_of(k, NONE).into_iter().filter(|&c| {
             let cc = &self.chars[c];
-            c != r && cc.has_trait("ambitious") && (cc.has_trait("deceitful") || cc.has_trait("cruel"))
+            let vend = cc.vendettas.iter().any(|v| v.0 == r);
+            c != r && ((cc.has_trait("ambitious") && (cc.has_trait("deceitful") || cc.has_trait("cruel"))) || vend)
                 && (cc.house == house || cc.renown > 150.0 || c == regent)
-        }).filter(|&c| self.opinion(c, r) < -20.0).collect();
+        }).filter(|&c| self.chars[c].vendettas.iter().any(|v| v.0 == r) || self.opinion(c, r) < -20.0).collect();
         for p in plotters {
             let chance = (0.001 * (self.chars[p].attr(3, y) - 0.6 * guard - 4.0).max(0.0)).min(0.01);
             if self.rng.random() < chance {
@@ -300,6 +305,7 @@ impl State {
                     continue;
                 }
                 self.remember_kin(p, r, "executed my kin", -60.0);
+                self.reluct(r, "execute", "an execution");
                 let text = format!("was executed for plotting against {} {}", self.chars[r].name, self.chars[r].regnal.clone().unwrap_or_default());
                 self.kill_by(p, text, true, r);
                 self.chars[r].tyranny = (self.chars[r].tyranny + 5.0).min(100.0);

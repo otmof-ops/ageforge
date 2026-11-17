@@ -185,6 +185,26 @@ strs("GREAT_WORKS", cv.GREAT_WORKS)
 from realm_of_ages import resources as _rs  # noqa: E402
 strs("CAVALRY", sorted(_rs.CAVALRY))
 
+# ---- crafts, professions, court
+out.append("pub const MATERIALS: [(&str, f64, f64); %d] = [%s];" % (len(data2.MATERIALS), ", ".join(f"({rs_str(n)}, {f(a)}, {f(b)})" for n, a, b in data2.MATERIALS)))
+out.append("pub const QUALITY: [(&str, f64); %d] = [%s];" % (len(data2.QUALITY), ", ".join(f"({rs_str(n)}, {f(a)})" for n, a in data2.QUALITY)))
+out.append("pub const WEAPONS: [(&str, &str); %d] = [%s];" % (len(data2.WEAPONS), ", ".join(f"({rs_str(n)}, {rs_str(a)})" for n, a in data2.WEAPONS)))
+out.append("pub const ARMORS: [(&str, &str); %d] = [%s];" % (len(data2.ARMORS), ", ".join(f"({rs_str(n)}, {rs_str(a)})" for n, a in data2.ARMORS)))
+out.append("pub const ENCHANT_TIERS: [(&str, f64, f64); %d] = [%s];" % (len(data2.ENCHANT_TIERS), ", ".join(f"({rs_str(n)}, {f(a)}, {f(b)})" for n, a, b in data2.ENCHANT_TIERS)))
+strs("ENCHANT_WEAPON", data2.ENCHANT_WEAPON); strs("ENCHANT_ARMOR", data2.ENCHANT_ARMOR)
+out.append("pub const SOULSTONE: [(&str, usize); %d] = [%s];" % (len(data2.SOULSTONE), ", ".join(f"({rs_str(k)}, {v})" for k, v in data2.SOULSTONE.items())))
+out.append("pub const PROFESSIONS: [(&str, usize, &[usize], &str); %d] = [%s];" % (len(data2.PROFESSIONS), ", ".join(
+    f"({rs_str(p)}, {c}, &[{', '.join(str(skills.index(x)) for x in prim)}], {rs_str(lk)})" for p, (c, prim, lk) in data2.PROFESSIONS.items())))
+strs("ITEM_A", data.ITEM_A); strs("ITEM_B", data.ITEM_B); strs("RARITY", data.RARITY); nums("RARITY_BONUS", data.RARITY_BONUS)
+from realm_of_ages import resources as _r2  # noqa: E402
+out.append("pub const NEEDS_MATERIAL: [(usize, &str); %d] = [%s];" % (len(_r2.NEEDS_MATERIAL), ", ".join(f"({k}, {rs_str(v)})" for k, v in _r2.NEEDS_MATERIAL.items())))
+out.append("pub const WORLDFORGED: [(&str, &str, &str); %d] = [%s];" % (len(data.WORLDFORGED), ", ".join(f"({rs_str(a)}, {rs_str(b)}, {rs_str(c)})" for a, b, c in data.WORLDFORGED)))
+from realm_of_ages import court as _ct  # noqa: E402
+out.append("pub const EDUCATION: [[&str; 4]; 5] = [%s];" % ", ".join("[" + ", ".join(rs_str(x) for x in _ct.EDUCATION[a]) + "]" for a in _ct.FOCI))
+out.append("pub const LIFESTYLES: [[(&str, &str, [&str; 3]); 3]; 5] = [%s];" % ", ".join("[" + ", ".join(f"({rs_str(t)}, {rs_str(e)}, [{', '.join(rs_str(x) for x in ps)}])" for t, e, ps in _ct.LIFESTYLES[a]) + "]" for a in _ct.FOCI))
+out.append("pub const PERK_VALUE: [(&str, f64); %d] = [%s];" % (len(_ct.PERK_VALUE), ", ".join(f"({rs_str(k)}, {f(v)})" for k, v in _ct.PERK_VALUE.items())))
+strs("HERO_MARK", [data2.HERO_MARK]); strs("SEER_GIFT", [data2.SEER_GIFT])
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")
 print(f"wrote src/tables.rs ({len(out)} lines)")

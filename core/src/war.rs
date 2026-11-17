@@ -175,9 +175,16 @@ impl State {
     }
 
     /// The best reason this realm has for war on another, or none.
-    fn cb_against(&self, k: usize, o: usize) -> Option<(String, Option<DKey>, bool, usize)> {
+    fn cb_against(&mut self, k: usize, o: usize) -> Option<(String, Option<DKey>, bool, usize)> {
         let r = self.realms[k].ruler;
         if r == NONE { return None; }
+        if let Some((v, whom)) = self.vengeance_target(r) {
+            if self.chars[v].realm == o {
+                let dk = self.nearest_duchy(k, o);
+                self.avenge_goal = (k, o, v);
+                return Some((format!("vengeance for {whom}"), dk, false, NONE));
+            }
+        }
         let mine: Vec<DKey> = self.ktitles.iter().filter(|(_, kd)| kd.ctrl == k).map(|(kt, _)| *kt).collect();
         for (dk, d) in &self.duchies { if d.ctrl == o && mine.contains(&d.kt) { return Some(("de jure claim".into(), Some(*dk), false, NONE)); } }
         let (rk, ro) = (&self.realms[k], &self.realms[o]);
@@ -218,8 +225,12 @@ impl State {
             else if claimant != NONE { format!(" to put {} on its throne", self.chars[claimant].name) } else { String::new() };
         let txt = format!(" ({name}{goal_txt})");
         self.wars.retain(|w| !((w.attacker == a && w.defender == b) || (w.attacker == b && w.defender == a)));
-        self.wars.push(War { attacker: a, defender: b, cb: name, goal_duchy: duchy, subjugate: subj, freedom, claimant, start: y, score: 0.0 });
+        self.wars.push(War { attacker: a, defender: b, cb: name, goal_duchy: duchy, subjugate: subj, freedom, claimant, start: y, score: 0.0, avenge: NONE });
         let r = self.realms[a].ruler;
+        let avenge = if self.avenge_goal.0 == a && self.avenge_goal.1 == b { self.avenge_goal.2 } else { NONE };
+        self.avenge_goal = (NONE, NONE, NONE);
+        if let Some(w) = self.wars.last_mut() { w.avenge = avenge; }
+        self.reluct(r, "war", "going to war");
         let key = (b, txt.clone());
         let joined = self.recent_decl.iter().any(|d| d.0 == key && y - d.1 <= 15);
         self.recent_decl.retain(|d| d.0 != key && y - d.1 <= 15);
@@ -287,13 +298,13 @@ impl State {
         let (ra, rb) = (self.realms[a].ruler, self.realms[b].ruler);
         if ra != NONE && rb != NONE {
             let lw = match outcome { "attacker" => Some((rb, ra)), "defender" => Some((ra, rb)), _ => None };
-            if let Some((l, wn)) = lw { self.remember(l, wn, "defeated me in war", -40.0, 0.5); }
+            if let Some((l, wn)) = lw { self.remember(l, wn, "defeated me in war", -40.0, 0.5); self.reluct(l, "defeat", "a lost war"); }
         }
         let yrs = y - w.start;
         let (an, bn) = (self.realms[a].name.clone(), self.realms[b].name.clone());
         let result: String;
         if outcome == "attacker" {
-            let what: String = if let Some(dk) = w.goal_duchy.filter(|d| self.duchies.contains_key(d)) {
+            let mut what: String = if w.goal_duchy.is_none() && w.avenge != NONE { "forces its terms".into() } else if let Some(dk) = w.goal_duchy.filter(|d| self.duchies.contains_key(d)) {
                 let towns: Vec<usize> = self.alive_towns_of(b).into_iter().filter(|&t| self.towns[t].duchy == Some(dk)).collect();
                 if !towns.is_empty() {
                     for &t in &towns { self.lose_lordship(t); self.towns[t].realm = a; self.towns[t].capital = false; }
@@ -325,6 +336,14 @@ impl State {
                     format!("puts {} on the throne of {bn}, a puppet now", self.chars[claimant].name)
                 } else { "wins, but has no one to crown".into() }
             };
+            let av = w.avenge;
+            if av != NONE && self.chars[av].alive && ra != NONE && self.chars[ra].alive {
+                let whom = self.chars[ra].vendettas.iter().find(|x| x.0 == av).map(|x| x.2.clone()).unwrap_or("their beloved".into());
+                let why = format!("was executed in vengeance by {}", self.chars[ra].name);
+                self.kill_by(av, why, false, ra);
+                self.avenged(ra, av, &whom);
+                what += &format!(", and {} pays with their life", self.chars[av].name);
+            }
             self.say(format!("**{an} wins its {}** against {bn} after {yrs} years and {what}.", w.cb), false);
             if ra != NONE && self.chars[ra].alive {
                 self.honour(ra, 100.0 + 10.0 * yrs as f64, "war");
@@ -355,18 +374,22 @@ impl State {
         for k in 0..self.realms.len() {
             if !self.active(k) || self.realms[k].overlord != NONE { continue; }
             let r = self.realms[k].ruler;
-            let urge = 0.08 * if self.chars[r].happy < -30.0 && self.chars[r].has_trait("wrathful") { 1.3 } else { 1.0 };
+            let v = self.vengeance_target(r);
+            let urge = if v.is_some() { 0.45 } else { 0.08 * if self.chars[r].happy < -30.0 && self.chars[r].has_trait("wrathful") { 1.3 } else { 1.0 } };
             if self.war[k].iter().filter(|&&w| w).count() >= 2 || self.rng.random() > urge { continue; }
             if !self.chars[r].adult(y) { continue; }
             for o in 0..self.realms.len() {
                 if o == k || !self.active(o) || self.war[k][o] || self.realms[k].allies.contains(&o) { continue; }
                 if y < self.truce[k][o] || self.realms[o].overlord == k { continue; }
-                if self.realms[k].gold < 0.0 { continue; }
+                let avenging = v.as_ref().is_some_and(|x| self.chars[x.0].realm == o);
+                if self.realms[k].gold < 0.0 && !avenging { continue; }
                 if !self.contact(k, o) { continue; }
                 let or = self.realms[o].ruler;
                 if self.opinion(r, or) > 30.0 && self.rng.random() < 0.7 { continue; }
-                if self.realms[k].army_power < 0.8 * self.realms[o].army_power { continue; }
-                let Some(cb) = self.cb_against(k, o) else { continue };
+                if !avenging && self.realms[k].army_power < 0.8 * self.realms[o].army_power { continue; }
+                if !avenging && self.chars[r].loves.iter().any(|l| self.chars[l.0].alive && self.chars[l.0].realm == o) { continue; }
+                let cb = self.cb_against(k, o);
+                let Some(cb) = cb else { continue };
                 self.start_war(k, o, cb, false);
                 break;
             }
@@ -758,7 +781,8 @@ impl State {
                         && ri != NONE && rj != NONE {
                         let (x, y) = (self.rng.random(), self.rng.random());
                         let (a, b) = if AGGRESSION[pi] * self.realms[i].aggr * x > AGGRESSION[pj] * self.realms[j].aggr * y { (i, j) } else { (j, i) };
-                        let cb = self.cb_against(a, b).or_else(|| self.nearest_duchy(a, b).map(|dk| ("border war".to_string(), Some(dk), false, NONE)));
+                        let cb = self.cb_against(a, b);
+                        let cb = cb.or_else(|| self.nearest_duchy(a, b).map(|dk| ("border war".to_string(), Some(dk), false, NONE)));
                         if let Some(cb) = cb { self.start_war(a, b, cb, false); }
                     }
                 } else {
@@ -862,7 +886,7 @@ impl State {
         let name = format!("the ruins of {}", self.towns[s].name);
         let riches = 1 + ((self.towns[s].wealth / 40.0) as i64).min(5);
         let depth = 1.0 + self.towns[s].walls as f64 * 0.4;
-        self.ruins.push(Ruin { name, pos: self.towns[s].pos, riches, depth });
+        self.ruins.push(Ruin { name, pos: self.towns[s].pos, riches, depth, loot: vec![] });
     }
 
     /// Blight, abandoned towns, realms whose last town has fallen, seats lost (world.events, world.cleanup).

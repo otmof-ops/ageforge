@@ -222,7 +222,7 @@ impl State {
                 if self.dread(r) > self.boldness(duke) || self.chars[r].hooks.iter().any(|h| h.0 == duke) { continue; }
                 let dc = &self.chars[duke];
                 let unhappy = dc.happy < -30.0;
-                if op >= 0.0 && !(op < 20.0 && (dc.has_trait("ambitious") || unhappy)) { continue; }
+                if op >= 0.0 && !(op < 20.0 && (dc.has_trait("ambitious") || unhappy)) && !dc.vendettas.iter().any(|v| v.0 == r) { continue; }
                 let land = self.duchies[&dk].land;
                 let key = if land != cap_land || dc.people != self.chars[r].people { ("independence", land) }
                           else if self.chars[r].tyranny >= 40.0 { ("liberty", -1) } else { ("claimant", -1) };
@@ -305,6 +305,7 @@ impl State {
                 self.remember(d, r, "revoked my title", -40.0, 0.5);
                 if d == leader && self.chars[d].alive && self.rng.random() < 0.6 {
                     self.remember_kin(d, r, "executed my kin", -60.0);
+                    self.reluct(r, "execute", "an execution");
                     let why = format!("was executed for leading a {kind} faction against {} {}", self.chars[r].name, self.chars[r].regnal.clone().unwrap_or_default());
                     self.kill_by(d, why, true, r);
                     self.chars[r].tyranny = (self.chars[r].tyranny + 6.0).min(100.0);
@@ -403,7 +404,8 @@ impl State {
             econ_distress: 0.0, corruption: 0.0, collect: 1.0, tax_mult: 1.0, levy: 0.0, income: 0.0, real_gdp: 0.0,
             credit: None, defaults: 0, rate: 0.0, money: 0.0, trade_val: 0.0, trade_net: 0.0, partners: 0,
             trade_protectionist: false, last_forced: -99, last_default: -99, mint_skill: 0.0, sector_boost: [0.0; 7],
-            econ_prev_gdp: None, goods: vec![] });
+            econ_prev_gdp: None, goods: vec![], market: vec![], treasury: vec![], soulstones: [0; 5], dragonbone: 0, potions: 0.0,
+                arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false });
         self.grow_tables();
         id
     }
