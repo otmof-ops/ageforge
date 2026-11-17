@@ -34,12 +34,12 @@ impl State {
     pub fn sea_year(&mut self) {
         let n = self.realms.len();
         if self.piracy.len() < n { self.piracy.resize(n, 0.0); self.sea_terror.resize(n, 0.0); }
-        self.fleets_year();
-        self.explore_year();
-        self.colonize_year();
-        self.naval_war_year();
-        self.sea_monsters_year();
-        self.pirates_year();
+        let t = std::time::Instant::now(); self.fleets_year(); self.sub_tick("sea: fleets", t);
+        let t = std::time::Instant::now(); self.explore_year(); self.sub_tick("sea: explore", t);
+        let t = std::time::Instant::now(); self.colonize_year(); self.sub_tick("sea: colonize", t);
+        let t = std::time::Instant::now(); self.naval_war_year(); self.sub_tick("sea: naval war", t);
+        let t = std::time::Instant::now(); self.sea_monsters_year(); self.sub_tick("sea: monsters", t);
+        let t = std::time::Instant::now(); self.pirates_year(); self.sub_tick("sea: pirates", t);
     }
 
     fn fleets_year(&mut self) {
@@ -196,11 +196,10 @@ impl State {
                 let where_ = if let Some(&p) = pl.first() { let c = self.sea_cell(self.towns[p].pos); self.sea_name_at(c) } else { "the open sea".into() };
                 let big = self.realms[i].warships + self.realms[j].warships > 40.0;
                 let (ws, ls) = (SHIPS[self.realms[win].ship_tier as usize].0, SHIPS[self.realms[lose].ship_tier as usize].0);
-                self.naval_battles.push((self.year, where_.clone(), self.realms[win].short.clone(), self.realms[lose].short.clone()));
+                self.naval_battles.push((self.year, where_.clone(), self.realms[win].short.clone(), self.realms[lose].short.clone(), ws, ls));
                 let title = crate::bending_title(&where_.replacen("the ", "", 1));
                 let t = format!("**The Battle of {title}.** The {}s of {} break the fleet of {}; its ports are blockaded.", ws.to_lowercase(), self.realms[win].name, self.realms[lose].name);
                 self.say(t, !big);
-                let _ = ls;
                 for (k, won) in [(win, true), (lose, false)] {
                     let adm = self.realms[k].council[5];
                     if adm != NONE && self.chars[adm].alive {

@@ -33,8 +33,8 @@ pub struct State {
     pub weariness: Vec<Vec<f64>>,
     pub armies: Vec<Army>,
     pub next_army: usize,
-    pub war_log: Vec<(i64, String, String, String, i64, &'static str)>,
-    pub battles_fought: Vec<(i64, String, i64)>,
+    pub war_log: Vec<(i64, String, String, String, i64, &'static str, String)>,
+    pub battles_fought: Vec<(i64, String, String, String, i64, i64, i64)>,
     pub sieges_won: u32,
     pub people_peak: [usize; 4],
     pub recent_decl: Vec<((usize, String), i64)>,
@@ -65,6 +65,10 @@ pub struct State {
     pub materials: Vec<crate::legends::Material>,
     pub watch: Vec<usize>,
     pub corrupted: Grid<bool>,
+    pub books: Vec<(usize, &'static str, f64, String, usize)>,               // pending: (realm, category, amount, note, who)
+    pub ledger: std::collections::BTreeMap<(i64, usize), Vec<(&'static str, f64)>>,
+    pub tx: Vec<(i64, usize, &'static str, f64, String, usize)>,
+    pub phase_times: Vec<(&'static str, f64)>,
     pub tribes: Vec<crate::bending::Tribe>,
     pub concord: usize,
     pub concord_next: usize,
@@ -81,7 +85,7 @@ pub struct State {
     pub pirate_kings: Vec<(i64, usize)>,
     pub piracy: Vec<f64>,
     pub sea_terror: Vec<f64>,
-    pub naval_battles: Vec<(i64, String, String, String)>,
+    pub naval_battles: Vec<(i64, String, String, String, &'static str, &'static str)>,
     pub dragon_riders: Vec<(i64, usize, String, &'static str)>,
     pub merges: Vec<(i64, usize, &'static str, String)>,
     pub religions: Vec<crate::people::Religion>,
@@ -105,6 +109,12 @@ pub struct State {
 }
 
 impl State {
+    /// Add the time since `t` to a sub-phase's running total (`World.phase_times`).
+    pub fn sub_tick(&mut self, name: &'static str, t: std::time::Instant) {
+        let d = t.elapsed().as_secs_f64();
+        match self.phase_times.iter_mut().find(|x| x.0 == name) { Some(x) => x.1 += d, None => self.phase_times.push((name, d)) }
+    }
+
     /// This year's weather and harvest.
     pub fn weather_year(&mut self) {
         let towns: Vec<((usize, usize), f64, String)> =
@@ -199,7 +209,7 @@ impl State {
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
                                cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
                                coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0, burghers: 0.08,
-                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, faith: vec![(cu, 1.0)], lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0, threat: 0.0, raided: None, raided_by: NONE, raided_year: -99, game: 0.0, curse_mult: 1.0, colony: false, metropole: NONE });
+                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, faith: vec![(cu, 1.0)], lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0, threat: 0.0, raided: None, raided_by: NONE, raided_year: -99, game: 0.0, curse_mult: 1.0, colony: false, metropole: NONE, land_value: 0.0 });
         id
     }
 
@@ -440,7 +450,7 @@ impl State {
         let legacy = self.chars[founder].legacy.iter().map(|x| x.1).sum::<f64>() * 0.5;
         let origin = format!("founded in year {} by {}", self.year, self.chars[founder].name);
         self.houses.push(House { id, name: HOUSE_STYLE[f].replace("{}", &name), people: f, founder,
-                                 founded: self.year, prestige: 0.0, rulers: 0, track, legacy, origin, cursed: false });
+                                 founded: self.year, prestige: 0.0, rulers: 0, track, legacy, origin, cursed: false, reign_years: 0 });
         self.chars[founder].house = id;
         id
     }

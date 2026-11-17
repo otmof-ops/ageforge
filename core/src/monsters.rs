@@ -660,6 +660,8 @@ impl State {
                     }
                     self.realms[kid].gold -= price;
                     self.monsters[m].hoard += price;
+                    let note = format!("tribute to {}", self.monsters[m].name);
+                    self.books.push((kid, "dragon tribute", -price, note, NONE));
                     continue;
                 }
                 let tp: f64 = towns.iter().map(|&t| self.towns[t].pop).sum();

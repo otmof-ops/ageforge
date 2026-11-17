@@ -155,13 +155,16 @@ impl State {
             let realm = &mut self.realms[k];
             let tax = match realm.gov { "tribal" => 0.015, "clan" => 0.025, "feudal" => 0.03, "republic" => 0.05, "theocracy" => 0.035, _ => 0.05 };
             realm.tax_now = (0.12 + (tax - 0.03) * 4.0 + 0.05 * (realm.crown_law as f64 - 1.0)) * if realm.tax_relief > year { 0.6 } else { 1.0 };
-            realm.gold += base * realm.tax_now * (1.0 - realm.corruption) * (1.0 + wealth) * realm.tax_mult * realm.collect;
+            let taxes = base * realm.tax_now * (1.0 - realm.corruption) * (1.0 + wealth) * realm.tax_mult * realm.collect;
+            realm.gold += taxes;
+            self.books.push((k, "taxes", taxes, String::new(), NONE));
             // (hosts in the field are fed from here once warfare is ported)
             let levy = match realm.gov { "tribal" => 0.12, "clan" => 0.1, "feudal" => 0.08, "republic" => 0.05, "theocracy" => 0.07, _ => 0.06 };
             realm.levy = pop * (levy + levy_b);
             realm.garrison_bonus = garrison_b;
             let upkeep: f64 = realm.maa.iter().map(|&(m, n)| MAA[m].2 * n as f64).sum::<f64>() * 8.0;
             realm.gold -= upkeep;
+            self.books.push((k, "army upkeep", -upkeep, String::new(), NONE));
             while realm.gold < -2.0 * (10.0f64).max(base * realm.tax_now) && !realm.maa.is_empty() {
                 let j = (0..realm.maa.len()).max_by(|&a, &b| MAA[realm.maa[a].0].2.partial_cmp(&MAA[realm.maa[b].0].2).unwrap()).unwrap();
                 realm.maa[j].1 -= 1;
@@ -189,6 +192,7 @@ impl State {
                 let realm = &mut self.realms[k];
                 match realm.maa.iter_mut().find(|x| x.0 == best.1) { Some(x) => x.1 += 1, None => realm.maa.push((best.1, 1)) }
                 realm.gold -= MAA[best.1].2 * 40.0;
+                self.books.push((k, "regiments", -MAA[best.1].2 * 40.0, format!("raises a regiment of {}", MAA[best.1].0), NONE));
             }
             let realm = &mut self.realms[k];
             let maa_power: f64 = realm.maa.iter().map(|&(m, n)| MAA[m].1 * n as f64 * 300.0).sum();
@@ -285,6 +289,7 @@ impl State {
             if let Some((new, what, cost)) = want {
                 if self.realms[k].gold >= cost && self.rng.random() < 0.3 {
                     self.realms[k].gold -= cost;
+                    self.books.push((k, "decisions", -cost, what.clone(), NONE));
                     let old = self.realms[k].name.clone();
                     self.realms[k].rank = new;
                     self.realms[k].place = place.clone();
@@ -425,6 +430,7 @@ impl State {
                 let name = GREAT_WORKS[self.rng.integers(0, GREAT_WORKS.len() as i64) as usize].replace("{}", &cname);
                 if !self.realms[k].great_works.contains(&name) {
                     self.realms[k].gold -= 300.0;
+                    self.books.push((k, "great works", -300.0, format!("builds {name}"), NONE));
                     self.realms[k].great_works.push(name.clone());
                     self.towns[cap].wealth += 100.0;
                     let r = self.realms[k].ruler;

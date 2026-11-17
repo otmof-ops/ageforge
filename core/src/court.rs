@@ -114,6 +114,7 @@ impl State {
             ct.kind = ["Diplomatic", "Warlike", "Administrative", "Intrigue", "Scholarly"][focus];
             let cost = 1.0 + ct.amen.iter().map(|&v| (v as f64).powf(1.5)).sum::<f64>() / 4.0 * 0.08 * revenue;
             realm.gold -= cost;
+            self.books.push((k, "court", -cost, String::new(), NONE));
             if realm.gold > cost * 6.0 { let i = (0..4).min_by_key(|&a| ct.amen[a]).unwrap(); ct.amen[i] = (ct.amen[i] + 1).min(5); }
             else if realm.gold < 0.0 { let i = (0..4).max_by_key(|&a| ct.amen[a]).unwrap(); ct.amen[i] = (ct.amen[i].max(2)) - 1; }
             // positions

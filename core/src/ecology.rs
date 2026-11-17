@@ -139,13 +139,11 @@ impl State {
             if prey.is_empty() { continue; }
             let a = 0.3 / sp.size.powf(0.25);
             let h = 0.4;
+            // prey available in each region and what the predator eats there, once per predator (not once per prey)
+            let avail: Vec<f64> = (0..nreg).map(|j| prey.iter().map(|&x| p[x][j] * eco.species[x].size).sum()).collect();
+            let intake: Vec<f64> = (0..nreg).map(|j| a * p[i][j] * avail[j] / (1.0 + a * h * avail[j])).collect();
             for &q in &prey {
-                let d: Vec<f64> = (0..nreg).map(|j| {
-                    let avail: f64 = prey.iter().map(|&x| p[x][j] * eco.species[x].size).sum();
-                    let intake = a * p[i][j] * avail / (1.0 + a * h * avail);
-                    let sh = p[q][j] * eco.species[q].size / (avail + 1e-9);
-                    intake * sh / eco.species[q].size
-                }).collect();
+                let d: Vec<f64> = (0..nreg).map(|j| intake[j] * (p[q][j] * eco.species[q].size / (avail[j] + 1e-9)) / eco.species[q].size).collect();
                 demand.push((i, q, d));
             }
         }

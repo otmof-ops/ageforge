@@ -1,4 +1,5 @@
 #!/bin/sh
-# Ageforge: open the Realm of Ages game.
+# Ageforge: open the Realm of Ages game. The first run builds the Rust core the world runs on.
 here="$(cd "$(dirname "$0")/.." && pwd)"
+ls "$here"/realm_of_ages/_core*.so >/dev/null 2>&1 || "$here/bin/build-core" || exit 1
 cd "$here" && exec python3 -m realm_of_ages.tui "$@"

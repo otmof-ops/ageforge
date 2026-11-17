@@ -9,11 +9,14 @@ that changes it, year by year.
 - `_core.World` owns everything: the map and climate grids, towns, realms, cultures, characters, houses, monsters,
   ruins, guild, clans, ledgers, the event log, and the random generator (`rng::Pcg64`, NumPy's PCG64).
 - Python talks to it through a narrow interface:
-  - `World(width, height, seed)`, `world.step(years)`, `world.year`
-  - reading: `events(since)`, `realm_rows()`, `econ_rows()`, `character(id)`, `find(query)`, grids for the map
-    (`terrain()`, `owner()`, `towns()`), books data
-  - god mode: one method per act (`wake_calamity`, `create_character`, `set_stat`, ...)
-  - `save(path)` / `World.load(path)` (binary, versioned)
+  - `World(width, height, state, inc)`: the generator starts where `np.random.default_rng(seed)` starts
+  - `step(years)` (the interpreter lock is released while it runs), `year`, `totals()`, `n_characters()`
+  - `snapshot(since)` and `grids()`: the whole world as plain dicts and arrays, which `realm_of_ages/bridge.py`
+    turns into objects with the Python engine's names, so the TUI, books and maps read it unchanged
+  - `events_from(index)`: the chronicle since an index
+  - `god(act, args)`: every act of the gods, one dispatcher (`godmode.rs`)
+- Saving is a record, not an image: `meta.json` keeps the seed, each advance and each act in order, and loading
+  replays it. The Rust world is deterministic, so the replay is exact.
 - Data lives in plain structs in vectors indexed by id (`Vec<Town>`, `Vec<Character>`, `Vec<Realm>`), with optional
   per-system data in its own vectors, so a yearly pass is a loop over packed memory.
 
@@ -40,9 +43,9 @@ A slice is done when its numbers sit inside the Python engine's own seed-to-seed
 | 4 | Realms: dynasties, succession, partition, councils, titles, factions, governance, civics, statecraft, war | dynasty, titles, governance, civics, statecraft, warfare, opinion | done. Over 300 years on 2 seeds against the full Python world: living realms 36 vs 30 and 31 vs 31, wars declared 233 vs 245 and 277 vs 229, battles 1187 vs 1551 and 1774 vs 1190, sieges 141 vs 100 and 243 vs 238, new realms 107 vs 120 and 115 vs 87, towns 812 vs 736 and 704 vs 640, people within 10%; 300 years in about 2 s (Python about 60 s) |
 | 5 | Society: crafts, guilds, crime, faith, stewardship, the Wardens' Hall, bounties | crafts, society, stewardship, guild, bounties | done (crafts in slice 3, stewardship in slice 2). Over 300 years on 2 seeds: quests done 1035 vs 1293 and 1274 vs 1029, seal raises 78 vs 102 and 97 vs 65, parties 37 vs 56 and 39 vs 46, great bounties 15 vs 17 and 14 vs 20 |
 | 6 | The fantastic: magic, arcana, monsters, dragons, gates, ecology, dungeons, beasts, bending, shinobi, heroes, legends, the sea | the rest | done. Over 300 years on 2 seeds: Concord returns 5 vs 5 (both), sightings 93 vs 94, sea monsters 24 vs 20 and 22 vs 21, naval battles 472 vs 402 and 314 vs 340, pirates 75 vs 91 and 94 vs 110, dragon tributes 19 vs 19, wild magic 3 vs 3; 300 years in 6.5 s (Python 34-38 s) before the speed pass |
-| 7 | Flip: the TUI and the books read from `_core.World`; the Python engine is retired | session, tui, output, godmode | |
+| 7 | Flip: the TUI and the books read from `_core.World`; the Python engine is retired | session, tui, output, godmode | done. The game, the books, god mode and `python3 -m realm_of_ages` run on the Rust world. Every tab, all 28 acts of the gods, and save and reload (a replay that rebuilds the identical world) checked; the books over 6 seeds at 300 years; 300 years with the books in 10-20 s |
 
-Until slice 7 the Python engine stays the game; each slice is built and checked inside the Rust world.
+The Python engine stays in the tree as the reference the port is checked against; the game no longer runs it.
 
 ## Python bugs found while porting
 

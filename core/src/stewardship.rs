@@ -30,6 +30,19 @@ pub fn stage(inn: &std::collections::HashSet<&'static str>) -> u32 {
 }
 
 impl State {
+    /// The year's bookings go into the ledger (events.book): sums by year, realm and category, and the notable
+    /// movements by name.
+    pub fn settle_books(&mut self) {
+        let y = self.year;
+        for (k, cat, amount, note, who) in std::mem::take(&mut self.books) {
+            if amount == 0.0 { continue; }
+            let row = self.ledger.entry((y, k)).or_default();
+            match row.iter_mut().find(|x| x.0 == cat) { Some(x) => x.1 += amount, None => row.push((cat, amount)) }
+            if !note.is_empty() || amount.abs() >= 1000.0 { self.tx.push((y, k, cat, amount, note, who)); }
+        }
+        if self.tx.len() > 20000 { self.tx.drain(..5000); }
+    }
+
     pub fn alive_towns_of(&self, k: usize) -> Vec<usize> {
         (0..self.towns.len()).filter(|&t| self.towns[t].alive && self.towns[t].realm == k).collect()
     }
@@ -211,6 +224,7 @@ impl State {
             if stage(&self.cultures[self.realms[k].people].innovations) >= 1 {
                 let tariff = if self.realms[k].trade_protectionist { 0.10 } else { 0.03 };
                 self.realms[k].gold += tariff * tv;
+                self.books.push((k, "customs", tariff * tv, String::new(), NONE));
             }
         }
     }
@@ -266,6 +280,7 @@ impl State {
             let realm = &mut self.realms[k];
             realm.money = money;
             realm.gold += 0.1 * mined;
+            self.books.push((k, "mine royalties", 0.1 * mined, String::new(), NONE));
             self.mined += mined;
             let debt = (-realm.gold).max(0.0);
             let revenue = (realm.income * realm.tax_now * realm.collect).max(1.0);
@@ -275,7 +290,7 @@ impl State {
             let base = if st == 2 { 0.06 } else { 0.12 };
             realm.rate = (base + 0.02 * debt / revenue + (50.0 - credit).max(0.0) / 250.0).min(0.25);
             let capacity = (0.5 * revenue).max(revenue * if st == 2 { 4.0 } else { 2.0 } * credit / 60.0);
-            if debt > 0.0 { realm.gold -= debt.min(capacity) * realm.rate; }
+            if debt > 0.0 { let i = debt.min(capacity) * realm.rate; realm.gold -= i; self.books.push((k, "interest", -i, String::new(), NONE)); }
             if debt > capacity { self.crisis(k, debt, capacity, revenue, ste); }
         }
     }
@@ -350,12 +365,14 @@ impl State {
             let (compassionate, just, generous, impatient, greedy) = (has("compassionate"), has("just"), has("generous"), has("impatient"), has("greedy"));
             let upkeep: f64 = towns.iter().map(|&t| (0..8).map(|b| BUILDINGS[b].1 * self.towns[t].bld[b] as f64).sum::<f64>()).sum::<f64>() * 0.01;
             self.realms[k].gold -= upkeep;
+            if upkeep > 0.0 { self.books.push((k, "buildings upkeep", -upkeep, String::new(), NONE)); }
             if self.rng.random() > attention {
                 self.reckoning(k, &e);
                 continue;
             }
             if e.poverty > 0.5 && (compassionate || just || judgement > 12.0) && self.realms[k].gold > 50.0 {
                 self.realms[k].gold -= 0.04 * e.gdp;
+                self.books.push((k, "poor relief", -0.04 * e.gdp, String::new(), NONE));
                 for &t in &towns { if self.towns[t].poverty > 0.45 { self.towns[t].relief = y + 3; } }
                 if self.rng.random() < 0.2 {
                     let t = format!("{} opens the granaries and funds the almshouses of {}.", self.who(r), self.realms[k].name);
@@ -391,6 +408,7 @@ impl State {
                     s.housing = Some(s.housing.unwrap_or(s.pop) + 300.0);
                 }
                 self.realms[k].gold -= cost;
+                self.books.push((k, "buildings", -cost, format!("builds {} in {}", BUILDINGS[b].0, self.towns[t].name), NONE));
                 budget -= cost;
                 self.chars[r].built += 1;
                 if self.towns[t].bld[b] >= 3 {

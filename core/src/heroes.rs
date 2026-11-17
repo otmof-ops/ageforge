@@ -12,7 +12,6 @@ use crate::tables::*;
 
 const REST: usize = 0; const TRAIN: usize = 1; const HUNT: usize = 2; const DELVE: usize = 3; const WAR: usize = 4;
 const GUARD: usize = 5; const STUDY: usize = 6; const SERVE: usize = 7; const BOUNTY: usize = 8;
-pub const ACTIONS: [&str; 9] = ["rest", "train", "hunt", "delve", "war", "guard", "study", "serve", "bounty"];
 const LEVEL_BANDS: [u32; 6] = [10, 20, 35, 50, 70, 90];
 const HERO_CAP: usize = 8;
 

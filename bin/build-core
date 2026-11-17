@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the Rust core (core/) and install it into the package. The game runs without it, only slower.
+# Build the Rust core (core/), the world the game runs on, and install it into the package. Needs Rust 1.80+ (rustup).
 set -e
 here="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$here/core"

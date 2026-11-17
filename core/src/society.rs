@@ -210,6 +210,7 @@ impl State {
             let fee = ((if tgt != tr { 0.3 } else { 1.0 }) * rev).max(5.0);
             if self.realms[client].gold < fee { return; }
             self.realms[client].gold -= fee;
+            self.books.push((client, "assassins", -fee, "a quiet payment".into(), NONE));
             self.chars[c].gold += fee;
             self.chars[c].bounty += fee;
             self.gain_fame(c, "assassin", if tgt == tr { 80.0 } else { 30.0 });

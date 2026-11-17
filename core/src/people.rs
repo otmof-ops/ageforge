@@ -169,6 +169,7 @@ pub struct House {
     pub legacy: f64,
     pub origin: String,
     pub cursed: bool,
+    pub reign_years: u32,
 }
 
 pub struct Town {
@@ -241,6 +242,7 @@ pub struct Town {
     pub curse_mult: f64,
     pub colony: bool,
     pub metropole: usize,
+    pub land_value: f64,
 }
 
 pub struct Epidemic {

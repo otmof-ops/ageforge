@@ -339,6 +339,7 @@ impl State {
             // the classes: who earns what, who owns what, how many fall below the line (markets.classes)
             let rest = real - s.labour_value;
             let r_ = rent(gov) * val[0];
+            s.land_value = r_ / 0.06;
             let vf = val[0] - r_;
             let inc = [
                 vf * 0.8 + val[1] * 0.55 + val[2] * 0.3 + val[3] * 0.1 + val[5] * 0.6 + idle * IDLE_VALUE * UNIT + soldiers * 0.6 * UNIT,

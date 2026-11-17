@@ -252,6 +252,17 @@ impl State {
         (0.5 * r.gold).max(1.5 * r.income * r.tax_now * r.collect).max(0.0)
     }
 
+    pub fn god_war(&mut self, a: usize, b: usize) {
+        let dk = self.nearest_duchy(a, b);
+        self.start_war(a, b, ("divine decree".into(), dk, false, NONE), false);
+    }
+
+    pub fn god_peace(&mut self, a: usize, b: usize) {
+        if let Some(i) = self.wars.iter().position(|w| (w.attacker == a && w.defender == b) || (w.attacker == b && w.defender == a)) { self.end_war(i, "white"); }
+        self.war[a][b] = false; self.war[b][a] = false;
+        self.truce[a][b] = self.year + 30; self.truce[b][a] = self.year + 30;
+    }
+
     pub fn battle_result_pub(&mut self, winner: usize, loser: usize) { self.battle_result(winner, loser, NONE); }
 
     fn battle_result(&mut self, winner: usize, loser: usize, captured: usize) {
@@ -314,6 +325,7 @@ impl State {
                 } else {
                     let pay = self.indemnity(b);
                     self.realms[b].gold -= pay; self.realms[a].gold += pay;
+                    self.books.push((b, "indemnity out", -pay, String::new(), NONE)); self.books.push((a, "indemnity in", pay, String::new(), NONE));
                     format!("finds {} already lost to another, and takes {} gold in tribute instead", self.duchies[&dk].name, crate::economy::thousands(pay))
                 }
             } else if w.subjugate {
@@ -360,6 +372,7 @@ impl State {
             if ra != NONE { let l = self.chars[ra].legitimacy.unwrap_or(50.0); self.chars[ra].legitimacy = Some((l - 10.0).max(0.0)); }
             let pay = self.indemnity(a);
             self.realms[a].gold -= pay; self.realms[b].gold += pay;
+            self.books.push((a, "indemnity out", -pay, String::new(), NONE)); self.books.push((b, "indemnity in", pay, String::new(), NONE));
             if rb != NONE && self.chars[rb].alive { self.honour(rb, 80.0 + 5.0 * yrs as f64, "war"); }
             if w.freedom { self.realms[a].overlord = b; }
             self.say(format!("{bn} throws back the {} of {an} after {yrs} years; {an} pays {} gold.", w.cb, crate::economy::thousands(pay)), false);
@@ -368,7 +381,7 @@ impl State {
             self.say(format!("The {} between {an} and {bn} ends in a white peace after {yrs} years.", w.cb), true);
             result = "white peace".into();
         } else { result = "dissolved".into(); }
-        self.war_log.push((y, an, bn, result, yrs, outcome));
+        self.war_log.push((y, an, bn, result, yrs, outcome, w.cb.clone()));
     }
 
     fn ambitions_year(&mut self) {
@@ -406,6 +419,7 @@ impl State {
             let tribute = self.realms[k].gold.max(0.0) * 0.15;
             self.realms[k].gold -= tribute;
             self.realms[ov].gold += tribute;
+            self.books.push((k, "tribute out", -tribute, String::new(), NONE)); self.books.push((ov, "tribute in", tribute, String::new(), NONE));
             if !self.realms[k].allies.contains(&ov) { self.realms[k].allies.push(ov); }
             if !self.realms[ov].allies.contains(&k) { self.realms[ov].allies.push(k); }
             if self.realms[k].army_power > 0.9 * self.realms[ov].army_power && self.rng.random() < 0.05 && self.active(k) {
@@ -516,6 +530,7 @@ impl State {
         self.armies.push(Army { id, realm: k, pos: self.towns[cap].pos, men, quality: (levy + maa_q) / men.max(1.0), commander: cmd, morale: 1.0,
                                 siege: 0.0, rebel: false, rebel_of: NONE, home: NONE, name: format!("the host of {}", realm.name), why: "", done: false });
         self.realms[k].gold -= men * 0.004;
+        self.books.push((k, "muster", -men * 0.004, format!("musters {} men", crate::economy::thousands(men)), NONE));
         Some(id)
     }
 
@@ -614,7 +629,9 @@ impl State {
         let apos = self.armies[ai].pos;
         let where_ = self.towns.iter().filter(|t| t.alive).min_by(|x, y| dist(x.pos, apos).partial_cmp(&dist(y.pos, apos)).unwrap()).map(|t| t.name.clone()).unwrap_or("the field".into());
         let total = lost_l + lost_w;
-        self.battles_fought.push((self.year, where_.clone(), total as i64));
+        let (wn0, ln0) = (self.armies[win].name.clone(), self.armies[lose].name.clone());
+        let (wm0, lm0) = ((self.armies[win].men + lost_w) as i64, (self.armies[lose].men + lost_l) as i64);
+        self.battles_fought.push((self.year, where_.clone(), wn0, ln0, wm0, lm0, total as i64));
         let big = total > 3000.0;
         let (wn, ln) = (self.armies[win].name.clone(), self.armies[lose].name.clone());
         let text = format!("{}The Battle of {where_}{} {} ({} men) breaks {ln} ({}); {} fall.", if big { "**" } else { "" }, if big { ".**" } else { "." }, cap1(&wn),
@@ -655,7 +672,7 @@ impl State {
         let loot = self.towns[t].wealth * 0.4;
         self.towns[t].wealth -= loot;
         self.towns[t].pop *= 0.92;
-        if k != NONE { self.realms[k].gold += loot; }
+        if k != NONE { self.realms[k].gold += loot; self.books.push((k, "loot", loot, format!("sacks {}", self.towns[t].name), NONE)); }
         self.battle_result(k, old, t);
         self.sieges_won += 1;
         let text = format!("{} takes {} after a siege.", cap1(&self.armies[ai].name), self.towns[t].name);

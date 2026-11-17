@@ -96,7 +96,7 @@ impl State {
                 }
             }
             let h = self.realms[k].house;
-            if h != NONE { self.houses[h].prestige += 1.0; }
+            if h != NONE { self.houses[h].prestige += 1.0; self.houses[h].reign_years += 1; }
         }
         self.councils();
         self.council_effects();
