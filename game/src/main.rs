@@ -5,7 +5,7 @@
 
 mod books;
 mod events;
-mod forms;
+mod kit;
 mod god;
 mod map;
 mod session;

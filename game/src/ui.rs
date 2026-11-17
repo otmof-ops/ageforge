@@ -1,4 +1,5 @@
-//! The game in the terminal: the worlds list, the world's tabs, god mode, the creator and the editor.
+//! The game's screens, laid out as the Textual interface was: the home screen, the new-world dialog, the world with
+//! its control buttons and tabs, god mode, the character editor and the confirm dialog.
 //!
 //! Screens read the world only between years (`try_lock`) and keep what they drew, so switching tabs while years
 //! run never waits on the world and never sees it mid-step.
@@ -8,38 +9,73 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::{Constraint, Layout, Rect};
+use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::execute;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Cell, Clear, Gauge, List, ListItem, ListState, Paragraph, Row, Table, Tabs, Wrap};
+use ratatui::text::{Line, Span};
 use ratatui::{DefaultTerminal, Frame};
 use serde_json::{json, Value};
 use world::state::State;
+use world::tables::*;
 
 use crate::events::CATEGORIES;
-use crate::forms::{centered, Field, Form, FormResult, PickResult, Picker, ACCENT, DIM};
 use crate::god;
+use crate::kit::*;
 use crate::session::{list_worlds, Session, PRESETS, SIZES};
 
-const TABS: [&str; 10] = ["Realms", "Chronicle", "Money", "Economy", "Guild", "Wars", "People", "Tracked", "Map", "Books"];
+const TABS: [&str; 10] = ["Realms", "Chronicle", "Transactions", "Economy", "Guild", "Wars", "People", "Tracked", "Map", "Books"];
+const BOOKS: [&str; 15] = ["summary.md", "realms.md", "dynasties.md", "legends.md", "myths.md", "world.md", "magic.md", "seas.md", "pirates.md",
+                           "society.md", "works.md", "dungeons.md", "bestiary.md", "calibration.md", "tracked.md"];
 
-enum Overlay {
-    Help,
-    Confirm(String, &'static str),
-    Acts(Picker),
-    ActForm(String, Form),
-    Creator(Form, god::Dice),
-    Presets(Picker),
-    Edits(usize, Picker),
-    EditForm(usize, String, Form),
-    PickChar(Picker),
+fn cat_color(c: &str) -> Color {
+    match c {
+        "god" => Color::Magenta, "war" => Color::Red, "politics" => Color::Yellow, "economy" => Color::Green, "people" => Color::Cyan,
+        "lives" => Color::White, "culture" => Color::LightBlue, "heart" => Color::LightMagenta, "magic" => Color::Rgb(190, 120, 255),
+        "monsters" => Color::LightRed, "heroes" => Color::LightYellow, "sea" => Color::Blue, "faith" => Color::LightCyan,
+        "crime" => Color::Rgb(180, 180, 180), "nature" => Color::LightGreen, _ => Color::Rgb(128, 128, 128),
+    }
 }
 
-/// What a tab last drew, with the world's year and act count it was drawn from.
+/// Buttons in a row, each as wide as its label needs, squeezed to fit the row.
+fn button_row(r: Rect, labels: &[&str]) -> Vec<Rect> {
+    let want: Vec<u16> = labels.iter().map(|l| (l.chars().count() as u16 + 4).max(10)).collect();
+    let total: u16 = want.iter().sum::<u16>() + labels.len() as u16;
+    let scale = if total > r.width { r.width as f64 / total as f64 } else { 1.0 };
+    let mut x = r.x;
+    want.iter().map(|&w| { let w = ((w as f64 * scale) as u16).max(4); let rr = Rect { x, y: r.y, width: w, height: 3.min(r.height) }; x += w + 1; rr }).collect()
+}
+
+/// Equal parts across a row.
+fn parts(r: Rect, n: usize) -> Vec<Rect> {
+    let w = (r.width.saturating_sub(n as u16 - 1)) / n as u16;
+    (0..n).map(|i| Rect { x: r.x + i as u16 * (w + 1), y: r.y, width: w, height: r.height }).collect()
+}
+
+fn notify(t: &mut Vec<Toast>, text: impl Into<String>, error: bool) { t.push(Toast { text: text.into(), error, at: Instant::now() }); }
+
+enum Modal { None, NewWorld, Confirm, God, Edit(usize) }
+
+struct App {
+    ui: Ui,
+    toasts: Vec<Toast>,
+    modal: Modal,
+    mui: Ui,
+    worlds: Vec<(PathBuf, Value)>,
+    opening: Option<std::thread::JoinHandle<Result<Arc<Session>, String>>>,
+    s: Option<Arc<Session>>,
+    tab: usize,
+    acts: u64,
+    views: Views,
+    run_started: Option<Instant>,
+    god_scroll: u16,
+    dice: god::Dice,
+    quit: bool,
+}
+
 #[derive(Default)]
 struct Views {
-    stamp: (i64, u64),
+    built: [i64; TABS.len()],
     status: String,
     realms: Vec<Vec<String>>,
     ledger: Vec<Vec<String>>,
@@ -52,540 +88,817 @@ struct Views {
     hall: Vec<String>,
     wars: Vec<String>,
     people: Vec<(usize, String)>,
-    tracked: Vec<(usize, String)>,
+    tracked: Vec<Line<'static>>,
+    sheet: (usize, String),
     map: Vec<Line<'static>>,
     map_size: (u16, u16),
-    built: [i64; TABS.len()],
-}
-
-struct WorldScreen {
-    s: Arc<Session>,
-    tab: usize,
-    views: Views,
-    acts: u64,
-    overlay: Option<Overlay>,
-    // chronicle
-    cat: usize,      // 0 = all
-    major_only: bool,
-    query: String,
-    typing: bool,
-    scroll: usize,
-    // people / tracked / books
-    list: ListState,
-    include_dead: bool,
-    sheet: (usize, String),
-    sheet_scroll: u16,
-    books: Vec<PathBuf>,
-    book_text: String,
-    note: String,
-    last_view_build: Instant,
-    pending_creator: Option<Overlay>,
-}
-
-enum Screen { Home(HomeScreen), World(Box<WorldScreen>) }
-
-struct HomeScreen { worlds: Vec<(PathBuf, Value)>, list: ListState, new_world: Option<Form>, note: String, opening: Option<std::thread::JoinHandle<Result<Arc<Session>, String>>> }
-
-impl HomeScreen {
-    fn new() -> HomeScreen { let mut list = ListState::default(); list.select(Some(0)); HomeScreen { worlds: list_worlds(), list, new_world: None, note: String::new(), opening: None } }
+    book: (usize, String),
+    last: Option<Instant>,
 }
 
 pub fn run() -> std::io::Result<()> {
     let mut term = ratatui::init();
+    execute!(std::io::stdout(), EnableMouseCapture)?;
     let res = main_loop(&mut term);
+    let _ = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
     res
 }
 
 fn main_loop(term: &mut DefaultTerminal) -> std::io::Result<()> {
-    let mut screen = Screen::Home(HomeScreen::new());
-    loop {
-        // a world being opened on its own thread (a replay takes a moment for an old world)
-        if let Screen::Home(h) = &mut screen {
-            if h.opening.as_ref().is_some_and(|j| j.is_finished()) {
-                match h.opening.take().unwrap().join() {
-                    Ok(Ok(s)) => { screen = Screen::World(Box::new(WorldScreen::new(s))); continue; }
-                    Ok(Err(e)) => h.note = format!("Cannot open it: {e}"),
-                    Err(_) => h.note = "Opening the world failed.".into(),
-                }
+    let mut app = App { ui: Ui::default(), toasts: vec![], modal: Modal::None, mui: Ui::default(), worlds: list_worlds(), opening: None, s: None, tab: 0,
+                        acts: 0, views: Views { built: [-1; TABS.len()], ..Default::default() }, run_started: None, god_scroll: 0, dice: god::Dice::new(), quit: false };
+    app.ui.cursor.insert("worlds".into(), 0);
+    while !app.quit {
+        if app.opening.as_ref().is_some_and(|j| j.is_finished()) {
+            match app.opening.take().unwrap().join() {
+                Ok(Ok(s)) => app.enter_world(s),
+                Ok(Err(e)) => notify(&mut app.toasts, format!("Cannot open it: {e}"), true),
+                Err(_) => notify(&mut app.toasts, "Opening the world failed.", true),
             }
         }
-        term.draw(|f| match &mut screen { Screen::Home(h) => draw_home(f, h), Screen::World(w) => w.draw(f) })?;
-        if !event::poll(Duration::from_millis(120))? { continue; }
-        let Event::Key(k) = event::read()? else { continue };
-        if k.kind != KeyEventKind::Press { continue; }
-        match &mut screen {
-            Screen::Home(h) => {
-                if let Some(f) = h.new_world.as_mut() {
-                    match f.key(k) {
-                        FormResult::Submit => {
-                            let name = f.get("name").as_str().unwrap_or("").trim().to_string();
-                            let seed = f.get("seed").as_f64().unwrap_or(1.0) as u64;
-                            let (_, w, hh) = SIZES[f.get("size").as_u64().unwrap_or(0) as usize];
-                            if name.is_empty() { f.note = "Give the world a name first.".into(); continue; }
-                            match Session::new(&name, seed, w, hh) {
-                                Ok(s) => { screen = Screen::World(Box::new(WorldScreen::new(s))); }
-                                Err(e) => { h.note = e.to_string(); h.new_world = None; }
-                            }
-                        }
-                        FormResult::Cancel => h.new_world = None,
-                        FormResult::Open => {}
-                    }
-                    continue;
+        term.draw(|f| app.draw(f))?;
+        if !event::poll(Duration::from_millis(100))? { continue; }
+        match event::read()? {
+            Event::Key(k) if k.kind == KeyEventKind::Press => app.key(k),
+            Event::Mouse(m) => app.mouse(m),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+impl App {
+    fn enter_world(&mut self, s: Arc<Session>) {
+        self.s = Some(s);
+        self.tab = 0;
+        self.views = Views { built: [-1; TABS.len()], ..Default::default() };
+        self.ui = Ui::default();
+        for id in ["realms", "people-list", "books"] { self.ui.cursor.insert(id.into(), 0); }
+        for id in ["chron<", "tx<", "econ", "classes", "rich", "parties", "quests", "hall<", "wars", "sheet", "tracked<", "book", "ledger"] { self.ui.scroll.insert(id.into(), 0); }
+        self.ui.selects.insert("chron-cat".into(), Select::new("all kinds", std::iter::once(("all kinds".to_string(), json!("all"), String::new())).chain(CATEGORIES.iter().map(|c| (c.to_string(), json!(c), String::new()))).collect()).first());
+        self.ui.selects.insert("chron-level".into(), Select::new("major only", vec![("major only".into(), json!("major"), String::new()), ("everything".into(), json!("all"), String::new())]).first());
+        self.ui.focus = "fwd100".into();
+    }
+
+    fn leave_world(&mut self) {
+        if let Some(s) = &self.s { s.save(); }
+        self.s = None;
+        self.ui = Ui::default();
+        self.ui.cursor.insert("worlds".into(), 0);
+        self.worlds = list_worlds();
+    }
+
+    fn running(&self) -> bool { self.s.as_ref().is_some_and(|s| s.running.load(Ordering::SeqCst)) }
+
+    // ---------------------------------------------------------------- input
+    fn key(&mut self, k: KeyEvent) {
+        if k.code == KeyCode::Char('q') && k.modifiers.contains(KeyModifiers::CONTROL) {
+            if self.running() { notify(&mut self.toasts, "Wait for the years to finish, or press Stop.", false); } else { if self.s.is_some() { self.leave_world(); } self.quit = true; }
+            return;
+        }
+        if !matches!(self.modal, Modal::None) {
+            if k.code == KeyCode::Esc && self.mui.open.is_none() { self.modal = Modal::None; return; }
+            if let Modal::God = self.modal {
+                if self.mui.open.is_none() && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown) {
+                    self.god_scroll = if k.code == KeyCode::PageUp { self.god_scroll.saturating_sub(10) } else { self.god_scroll + 10 };
+                    return;
                 }
-                if h.opening.is_some() { continue; }
-                let n = h.worlds.len();
-                let sel = h.list.selected().unwrap_or(0);
-                match k.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                    KeyCode::Char('n') => {
-                        let mut d = god::Dice::new();
-                        h.new_world = Some(Form::new("A new world", vec![
-                            Field::text("name", "Name", "", "What the world is called."),
-                            Field::num("seed", "Seed", (d.next() % 100_000) as f64, 0.0, 1e12, 1.0, "The same seed grows the same world."),
-                            Field::choice("size", "Size", SIZES.iter().enumerate().map(|(i, s)| (s.0.to_string(), json!(i), String::new())).collect(), "Vast worlds hold several continents and take longer to run."),
-                            Field::action("Begin", "F10 or Enter: found the world."),
-                        ]));
+            }
+            let act = self.mui.key(k);
+            self.modal_act(act);
+            return;
+        }
+        if self.s.is_none() {
+            let act = self.ui.key(k);
+            self.home_act(act);
+            return;
+        }
+        // the world: bindings first, unless typing into a box or choosing from a list
+        let typing = self.ui.focus.starts_with("in:") || self.ui.open.is_some();
+        if !typing {
+            match k.code {
+                KeyCode::Char(c @ '1'..='9') => { self.press(&format!("fwd{}", PRESETS[(c as u8 - b'1') as usize])); return; }
+                KeyCode::Char('g') => { self.press("god"); return; }
+                KeyCode::Left => { self.set_tab((self.tab + TABS.len() - 1) % TABS.len()); return; }
+                KeyCode::Right => { self.set_tab((self.tab + 1) % TABS.len()); return; }
+                _ => {}
+            }
+        }
+        let act = self.ui.key(k);
+        self.world_act(act);
+    }
+
+    fn mouse(&mut self, m: crossterm::event::MouseEvent) {
+        if !matches!(self.modal, Modal::None) {
+            if let Modal::God = self.modal {
+                if matches!(m.kind, event::MouseEventKind::ScrollUp | event::MouseEventKind::ScrollDown) && self.mui.open.is_none() {
+                    self.god_scroll = if matches!(m.kind, event::MouseEventKind::ScrollUp) { self.god_scroll.saturating_sub(3) } else { self.god_scroll + 3 };
+                    return;
+                }
+            }
+            let act = self.mui.mouse(m);
+            self.modal_act(act);
+            return;
+        }
+        let act = self.ui.mouse(m);
+        if self.s.is_none() { self.home_act(act) } else { self.world_act(act) }
+    }
+
+    fn set_tab(&mut self, t: usize) {
+        self.tab = t;
+        self.ui.focus = match t { 1 => "chron<", 6 => "people-list", 9 => "books", 0 => "realms", 5 => "wars", 7 => "tracked<", _ => "fwd100" }.to_string();
+    }
+
+    fn home_act(&mut self, act: Act) {
+        if let Act::Pressed(id) = act {
+            match id.as_str() {
+                "new" => {
+                    self.mui = Ui::default();
+                    self.mui.set_input("in:name", "");
+                    self.mui.set_input("in:seed", "1");
+                    self.mui.selects.insert("size".into(), Select::new("size", SIZES.iter().enumerate().map(|(i, s)| (s.0.to_string(), json!(i), String::new())).collect()).with(json!(1)));
+                    self.mui.focus = "in:name".into();
+                    self.modal = Modal::NewWorld;
+                }
+                "load" | "worlds" => {
+                    if self.opening.is_some() { return; }
+                    let i = self.ui.cursor_of("worlds");
+                    let Some((dir, meta)) = self.worlds.get(i).cloned() else { notify(&mut self.toasts, "Pick a world first.", false); return };
+                    notify(&mut self.toasts, format!("Opening the world: replaying {} years of its history...", meta["year"].as_i64().unwrap_or(0)), false);
+                    self.opening = Some(std::thread::spawn(move || Session::load(&dir)));
+                }
+                "quit" => self.quit = true,
+                _ => {}
+            }
+        }
+    }
+
+    fn press(&mut self, id: &str) { self.world_act(Act::Pressed(id.to_string())); }
+
+    fn world_act(&mut self, act: Act) {
+        let s = self.s.clone().unwrap();
+        match act {
+            Act::Pressed(id) => {
+                if let Some(t) = id.strip_prefix("tab:") { self.set_tab(t.parse().unwrap_or(0)); return; }
+                if let Some(n) = id.strip_prefix("fwd") {
+                    let n: i64 = n.parse().unwrap_or(100);
+                    if self.running() { notify(&mut self.toasts, "Already running.", false); return; }
+                    if s.ended() { notify(&mut self.toasts, "This world has ended.", false); return; }
+                    s.advance(n);
+                    self.run_started = Some(Instant::now());
+                    notify(&mut self.toasts, format!("Moving the world forward {n} years..."), false);
+                    return;
+                }
+                let sel_char = self.views.people.get(self.ui.cursor_of("people-list")).map(|x| x.0);
+                match id.as_str() {
+                    "stop" => { s.stop.store(true, Ordering::SeqCst); notify(&mut self.toasts, "Stopping at the end of this year...", false); }
+                    "god" => { if self.running() { notify(&mut self.toasts, "Wait for the years to finish first.", false); } else { self.open_god(); } }
+                    "end" => { if !self.running() { self.mui = Ui::default(); self.mui.focus = "no".into(); self.modal = Modal::Confirm; } }
+                    "close" => { if self.running() { notify(&mut self.toasts, "Wait for the years to finish, or press Stop.", false); } else { self.leave_world(); } }
+                    "track" | "untrack" => {
+                        if self.running() { return; }
+                        let Some(c) = sel_char else { notify(&mut self.toasts, "Pick someone in the list first.", false); return };
+                        self.god_act("track", serde_json::Map::from_iter([("c".into(), json!(c)), ("on".into(), json!(id == "track"))]));
                     }
-                    KeyCode::Up => h.list.select(Some(sel.saturating_sub(1))),
-                    KeyCode::Down => h.list.select(Some((sel + 1).min(n.saturating_sub(1)))),
-                    KeyCode::Enter if n > 0 => {
-                        let (dir, meta) = h.worlds[sel].clone();
-                        h.note = format!("Opening {}: replaying {} years of its history...", meta["name"].as_str().unwrap_or("it"), meta["year"].as_i64().unwrap_or(0));
-                        h.opening = Some(std::thread::spawn(move || Session::load(&dir)));
+                    "edit" => {
+                        if self.running() { notify(&mut self.toasts, "Wait for the years to finish first.", false); return; }
+                        let Some(c) = sel_char else { notify(&mut self.toasts, "Pick someone in the list first.", false); return };
+                        self.open_edit(c);
                     }
                     _ => {}
                 }
             }
-            Screen::World(w) => {
-                if w.key(k) { w.s.save(); screen = Screen::Home(HomeScreen::new()); }
+            Act::Changed(id) => {
+                if id == "in:people" { self.ui.cursor.insert("people-list".into(), 0); self.views.built[6] = -1; }
+                if id == "people-list" || id == "books" { self.views.built[self.tab] = -1; }
+                if id.starts_with("chron") || id == "in:chron" { self.ui.scroll.insert("chron<".into(), 0); }
             }
+            Act::Scrolled => { if matches!(self.ui.focus.as_str(), "people-list" | "books") { self.views.built[self.tab] = -1; } }
+            Act::None => {}
         }
     }
-}
 
-fn draw_home(f: &mut Frame, h: &mut HomeScreen) {
-    let area = f.area();
-    let [title, body, foot] = Layout::vertical([Constraint::Length(5), Constraint::Min(5), Constraint::Length(3)]).areas(area);
-    let t = Text::from(vec![
-        Line::from(Span::styled("AGEFORGE", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("Realm of Ages: a world that forges its own history", Style::default().fg(DIM))),
-    ]);
-    f.render_widget(Paragraph::new(t).alignment(ratatui::layout::Alignment::Center).block(Block::default().borders(Borders::BOTTOM)), title);
-    let items: Vec<ListItem> = h.worlds.iter().map(|(_, m)| {
-        let state = if m["ended"].as_bool().unwrap_or(false) { "ended".to_string() } else { format!("year {}", m["year"].as_i64().unwrap_or(0)) };
-        let old = if m["engine"].as_str() != Some("rust") { "   (old engine: read its books on disk)" }
-                  else if m["rules"].as_i64().unwrap_or(1) < crate::session::RULES_VERSION { "   (older rules: it will regrow differently from its chronicle)" } else { "" };
-        ListItem::new(format!("{}   {state}, seed {}{old}", m["name"].as_str().unwrap_or("?"), m["seed"]))
-    }).collect();
-    let empty = items.is_empty();
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(" Worlds ")).highlight_style(Style::default().bg(Color::Rgb(60, 60, 90)).add_modifier(Modifier::BOLD)).highlight_symbol("▶ ");
-    f.render_stateful_widget(list, body, &mut h.list);
-    if empty { f.render_widget(Paragraph::new("No worlds yet. Press n to found one.").style(Style::default().fg(DIM)), body.inner(ratatui::layout::Margin { horizontal: 3, vertical: 2 })); }
-    let keys = if h.opening.is_some() { h.note.clone() } else { format!("n new world · ↑↓ choose · Enter open · q quit   {}", h.note) };
-    f.render_widget(Paragraph::new(keys).style(Style::default().fg(DIM)).block(Block::default().borders(Borders::TOP)), foot);
-    if let Some(form) = h.new_world.as_mut() { form.draw(f, area); }
-}
-
-fn table<'a>(header: &[&'a str], rows: &'a [Vec<String>], widths: &[u16]) -> Table<'a> {
-    let w: Vec<Constraint> = widths.iter().map(|&x| Constraint::Length(x)).collect();
-    Table::new(rows.iter().map(|r| Row::new(r.iter().map(|c| Cell::from(c.as_str())))), w)
-        .header(Row::new(header.iter().copied()).style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)))
-        .column_spacing(1)
-}
-
-fn cat_color(c: &str) -> Color {
-    match c {
-        "god" => Color::Magenta, "war" => Color::Red, "politics" => Color::Yellow, "economy" => Color::Green, "people" => Color::Cyan,
-        "lives" => Color::White, "culture" => Color::LightBlue, "heart" => Color::LightMagenta, "magic" => Color::Rgb(190, 120, 255),
-        "monsters" => Color::LightRed, "heroes" => Color::LightYellow, "sea" => Color::Blue, "faith" => Color::LightCyan, _ => Color::Gray,
-    }
-}
-
-impl WorldScreen {
-    fn new(s: Arc<Session>) -> WorldScreen {
-        let mut list = ListState::default();
-        list.select(Some(0));
-        WorldScreen { s, tab: 0, views: Views { stamp: (-1, 0), built: [-1; TABS.len()], ..Default::default() }, acts: 0, overlay: None, cat: 0, major_only: false,
-                      query: String::new(), typing: false, scroll: 0, list, include_dead: false, sheet: (usize::MAX, String::new()), sheet_scroll: 0,
-                      books: vec![], book_text: String::new(), note: String::new(), last_view_build: Instant::now() - Duration::from_secs(5), pending_creator: None }
+    fn god_act(&mut self, act: &str, args: serde_json::Map<String, Value>) -> bool {
+        let s = self.s.clone().unwrap();
+        match s.god(act, args) {
+            Ok(t) => { notify(&mut self.toasts, t, false); self.acts += 1; self.views.built = [-1; TABS.len()]; true }
+            Err(e) => { notify(&mut self.toasts, e, true); false }
+        }
     }
 
-    fn stamp(&self) -> (i64, u64) { (self.s.year_now.load(Ordering::SeqCst), self.acts) }
+    // ---------------------------------------------------------------- god mode and the editor
+    fn open_god(&mut self) {
+        let s = self.s.clone().unwrap();
+        let Ok(st) = s.world.try_lock() else { return };
+        let realms = god::realm_opts(&st);
+        let mut u = Ui::default();
+        u.selects.insert("ra".into(), Select::new("Realm A", realms.clone()));
+        u.selects.insert("rb".into(), Select::new("Realm B", realms.clone()));
+        u.selects.insert("land".into(), Select::new("Continent", god::land_opts(&st)));
+        u.selects.insert("cul".into(), Select::new("People", god::people_opts()));
+        u.selects.insert("gov".into(), Select::new("Government", ["tribal", "clan", "feudal", "republic", "theocracy", "administrative"].iter().map(|g| (g.to_string(), json!(g), String::new())).collect()));
+        u.selects.insert("mon".into(), Select::new("Monster", ["troll", "wraith", "demon", "dragon"].iter().map(|g| (g.to_string(), json!(g), String::new())).collect()));
+        u.set_input("in:amt", "");
+        u.set_input("in:cname", "");
+        u.selects.insert("cpeople".into(), Select::new("People", god::people_opts()));
+        u.selects.insert("csex".into(), Select::new("Sex", vec![("woman".into(), json!(true), String::new()), ("man".into(), json!(false), String::new())]));
+        u.set_input("in:cage", "20");
+        u.selects.insert("crealm".into(), Select::new("Realm", realms));
+        u.selects.insert("cclass".into(), Select::new("Class", god::class_opts(true)));
+        u.set_input("in:clevel", "1");
+        u.set_input("in:cprow", "");
+        u.set_input("in:ctal", "");
+        u.set_input("in:cgold", "0");
+        u.set_input("in:cattrs", "");
+        u.selects.insert("cpers".into(), Select::checklist("personality (up to four)", god::personality_opts(), &[]));
+        u.selects.insert("cgen".into(), Select::checklist("genetic / bloodlines", god::gene_opts(false), &[]));
+        u.selects.insert("clat".into(), Select::checklist("hidden (latent) bloodlines", god::gene_opts(true), &[]));
+        u.selects.insert("chero".into(), Select::new("hero?", vec![("hero".into(), json!(true), String::new()), ("not a hero".into(), json!(false), String::new())]).first());
+        u.selects.insert("corigin".into(), Select::new("Origin", god::origin_opts()));
+        u.selects.insert("cambition".into(), Select::new("Ambition", god::ambition_opts()));
+        u.selects.insert("cpreset".into(), Select::new("Start from a preset...", god::ARCHETYPES.iter().map(|a| (a.0.to_string(), json!(a.0), format!("{} level {}", a.1, a.2))).collect()));
+        u.set_input("in:cstory", "");
+        u.focus = "ra".into();
+        self.mui = u;
+        self.god_scroll = 0;
+        self.modal = Modal::God;
+    }
 
-    /// Rebuild what the open tab shows, if the world moved and it is free (never waits on a year being run).
-    fn refresh(&mut self, area: Rect) {
-        let running = self.s.running.load(Ordering::SeqCst);
+    fn open_edit(&mut self, c: usize) {
+        let s = self.s.clone().unwrap();
+        let Ok(st) = s.world.try_lock() else { return };
+        let ch = &st.chars[c];
+        let mut u = Ui::default();
+        let mut stats: Vec<god::Opt> = ATTRS.iter().enumerate().map(|(i, a)| (format!("{a} (now {:.0})", ch.attrs[i]), json!(a), String::new())).collect();
+        for (k, v) in [("prowess", ch.prowess), ("talent", ch.talent), ("level", ch.level as f64), ("renown", ch.renown), ("gold", ch.gold), ("stress", ch.stress), ("happy", ch.happy), ("health", ch.health)] {
+            stats.push((format!("{k} (now {v:.0})"), json!(k), String::new()));
+        }
+        for (i, sk) in SKILLS.iter().enumerate() { stats.push((format!("skill: {sk} (now {:.0})", ch.skills[i]), json!(sk), String::new())); }
+        u.selects.insert("stat".into(), Select::new("Stat", stats));
+        u.set_input("in:sval", "");
+        let mut traits = god::personality_opts();
+        traits.extend(god::gene_opts(false));
+        let have: Vec<String> = ch.personality.iter().map(|&p| PERSONALITY[p].to_string()).chain(ch.genetic.iter().map(|&g| GENETIC[g].to_string())).collect();
+        for t in traits.iter_mut() { if have.iter().any(|h| Value::from(h.as_str()) == t.1) { t.0 = format!("✓ {}", t.0); } }
+        u.selects.insert("trait".into(), Select::new("Trait (✓ = has it)", traits));
+        u.selects.insert("cls".into(), Select::new("Class", god::class_opts(true)));
+        u.set_input("in:relic", "");
+        u.selects.insert("rar".into(), Select::new("rarity", RARITY.iter().enumerate().map(|(i, r)| (r.to_string(), json!(i), String::new())).collect()).with(json!(5)));
+        u.selects.insert("other".into(), Select::new("another person (type to search)", god::char_opts(&st)));
+        u.focus = "stat".into();
+        self.mui = u;
+        self.modal = Modal::Edit(c);
+    }
+
+    fn modal_act(&mut self, act: Act) {
+        match self.modal {
+            Modal::NewWorld => {
+                if let Act::Pressed(id) = act {
+                    if id == "cancel" { self.modal = Modal::None; return; }
+                    if id == "ok" || id.starts_with("in:") {
+                        let name = { let n = self.mui.input("in:name"); if n.trim().is_empty() { "Untitled World".to_string() } else { n.trim().to_string() } };
+                        let seed: u64 = self.mui.input("in:seed").trim().parse().unwrap_or(1);
+                        let (_, w, h) = SIZES[self.mui.sel("size").and_then(|v| v.as_u64()).unwrap_or(1) as usize];
+                        notify(&mut self.toasts, "The world wakes...", false);
+                        match Session::new(&name, seed, w, h) {
+                            Ok(s) => { self.modal = Modal::None; self.enter_world(s); }
+                            Err(e) => notify(&mut self.toasts, e.to_string(), true),
+                        }
+                    }
+                }
+            }
+            Modal::Confirm => {
+                if let Act::Pressed(id) = act {
+                    if id == "yes" { let s = self.s.clone().unwrap(); s.end(); self.acts += 1; self.views.built = [-1; TABS.len()]; notify(&mut self.toasts, "The world has ended. Its books are written.", false); }
+                    self.modal = Modal::None;
+                }
+            }
+            Modal::God => self.god_pressed(act),
+            Modal::Edit(c) => self.edit_pressed(c, act),
+            Modal::None => {}
+        }
+    }
+
+    fn god_pressed(&mut self, act: Act) {
+        let id = match act {
+            Act::Pressed(id) => id,
+            Act::Changed(id) => {
+                if id == "cpreset" { self.apply_preset(); }
+                if id == "cpers" { tidy_personality(self.mui.selects.get_mut("cpers").unwrap()); }
+                return;
+            }
+            _ => return,
+        };
+        if id == "close" { self.modal = Modal::None; return; }
+        if id.starts_with("in:") { return; }
+        let u = &self.mui;
+        let num = |s: String, d: f64| s.trim().parse::<f64>().unwrap_or(d);
+        let (a, b, land, cul) = (u.sel("ra"), u.sel("rb"), u.sel("land"), u.sel("cul"));
+        let amt = num(u.input("in:amt"), 0.0);
+        let need_a = ["monster", "plague", "famine", "bless", "gold", "govset", "break", "curse", "smite", "war", "peace"];
+        if need_a.contains(&id.as_str()) && a.is_none() { notify(&mut self.toasts, "pick Realm A first", true); return; }
+        let m = |pairs: Vec<(&str, Value)>| serde_json::Map::from_iter(pairs.into_iter().map(|(k, v)| (k.to_string(), v)));
+        let (act, args) = match id.as_str() {
+            "calamity" | "wcalamity" => { let Some(l) = land else { notify(&mut self.toasts, "pick a continent", true); return }; ("wake_calamity", m(vec![("lid", l), ("world", json!(id == "wcalamity"))])) }
+            "monster" => ("loose_monster", m(vec![("kind", u.sel("mon").unwrap_or(json!("dragon"))), ("kid", a.unwrap())])),
+            "plague" => ("send_plague", m(vec![("kid", a.unwrap()), ("great", json!(true))])),
+            "famine" => ("set_harvest", m(vec![("kid", a.unwrap()), ("mult", json!(0.35)), ("years", json!(if amt > 0.0 { amt as i64 } else { 3 }))])),
+            "bless" => ("set_harvest", m(vec![("kid", a.unwrap()), ("mult", json!(1.6)), ("years", json!(if amt > 0.0 { amt as i64 } else { 10 }))])),
+            "gold" => ("grant_gold", m(vec![("kid", a.unwrap()), ("amount", json!(if amt > 0.0 { amt } else { 1000.0 }))])),
+            "war" | "peace" => {
+                if b.is_none() || b == a { notify(&mut self.toasts, "pick two different realms", true); return; }
+                (if id == "war" { "declare_war" } else { "impose_peace" }, m(vec![("a", a.unwrap()), ("b", b.unwrap())]))
+            }
+            "govset" => ("change_government", m(vec![("kid", a.unwrap()), ("gov", u.sel("gov").unwrap_or(json!("feudal")))])),
+            "era" | "golden" => { let Some(c) = cul else { notify(&mut self.toasts, "pick a people", true); return }; (if id == "era" { "raise_era" } else { "golden_age" }, m(vec![("culture", c)])) }
+            "break" => { let Some(l) = land else { notify(&mut self.toasts, "pick a continent", true); return }; ("break_realm", m(vec![("kid", a.unwrap()), ("lid", l)])) }
+            "curse" => {
+                let s = self.s.clone().unwrap();
+                let h = s.world.lock().unwrap().realms[a.clone().unwrap().as_u64().unwrap_or(0) as usize].house;
+                if h == world::people::NONE { notify(&mut self.toasts, "that realm has no ruling house", true); return; }
+                ("curse_house", m(vec![("hid", json!(h))]))
+            }
+            "smite" => {
+                let s = self.s.clone().unwrap();
+                let cap = { let st = s.world.lock().unwrap(); st.capital_of(a.clone().unwrap().as_u64().unwrap_or(0) as usize) };
+                if cap == world::people::NONE { notify(&mut self.toasts, "no seat", true); return; }
+                ("smite_town", m(vec![("town", json!(cap))]))
+            }
+            "create" => match self.person_args() { Ok(args) => ("create_character", args), Err(e) => { notify(&mut self.toasts, e, true); return } },
+            _ => return,
+        };
+        if self.god_act(act, args) && act == "create_character" {
+            notify(&mut self.toasts, "They walk into the world, tracked.", false);
+        }
+    }
+
+    fn person_args(&self) -> Result<serde_json::Map<String, Value>, String> {
+        let u = &self.mui;
+        let (Some(people), Some(realm)) = (u.sel("cpeople"), u.sel("crealm")) else { return Err("pick a people and a realm".into()) };
+        let num = |k: &str| u.input(k).trim().parse::<f64>().ok();
+        let mut a = serde_json::Map::new();
+        a.insert("name".into(), Value::String({ let n = u.input("in:cname"); if n.trim().is_empty() { "Nameless".to_string() } else { n.trim().to_string() } }));
+        a.insert("people".into(), people);
+        a.insert("female".into(), u.sel("csex").unwrap_or(json!(false)));
+        a.insert("age".into(), json!(num("in:cage").unwrap_or(20.0) as i64));
+        a.insert("realm".into(), realm);
+        if let Some(c) = u.sel("cclass") { a.insert("cls".into(), c); }
+        a.insert("level".into(), json!(num("in:clevel").unwrap_or(1.0) as i64));
+        if let Some(p) = num("in:cprow") { a.insert("prowess".into(), json!(p)); }
+        if let Some(t) = num("in:ctal") { a.insert("talent".into(), json!(t)); }
+        a.insert("gold".into(), json!(num("in:cgold").unwrap_or(0.0)));
+        let at = u.input("in:cattrs");
+        if !at.trim().is_empty() {
+            let vals: Vec<f64> = at.split(',').map(|x| x.trim().parse().unwrap_or(5.0)).collect();
+            a.insert("attrs".into(), Value::Object(ATTRS.iter().zip(vals).map(|(k, v)| (k.to_string(), json!(v))).collect()));
+        }
+        let pers = u.checked("cpers");
+        if !pers.is_empty() { a.insert("personality".into(), Value::Array(pers)); }
+        a.insert("genetic".into(), Value::Array(u.checked("cgen")));
+        a.insert("latent".into(), Value::Array(u.checked("clat")));
+        a.insert("hero".into(), u.sel("chero").unwrap_or(json!(true)));
+        if let Some(o) = u.sel("corigin") { a.insert("origin".into(), o); }
+        if let Some(am) = u.sel("cambition") { if !am.is_null() { a.insert("ambition".into(), am); } }
+        let story = u.input("in:cstory");
+        if !story.trim().is_empty() { a.insert("origin_story".into(), json!(story)); }
+        a.insert("track".into(), json!(true));
+        Ok(a)
+    }
+
+    /// A preset fills in the person's calling, stats, traits, origin and ambition (and a name if none is set).
+    fn apply_preset(&mut self) {
+        let Some(p) = self.mui.sel("cpreset").and_then(|v| v.as_str().map(String::from)) else { return };
+        let Some(&(_, cls, lvl, stats, pers, genes, origin, amb, hero)) = god::ARCHETYPES.iter().find(|a| a.0 == p) else { return };
+        let u = &mut self.mui;
+        if let Some(s) = u.selects.get_mut("cclass") { *s = s.clone().with(json!(cls)); }
+        u.set_input("in:clevel", &lvl.to_string());
+        u.set_input("in:cattrs", &stats.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","));
+        if let Some(s) = u.selects.get_mut("cpers") { for i in 0..s.opts.len() { let v = s.opts[i].1.clone(); s.checked[i] = pers.iter().any(|p| Value::from(*p) == v); } }
+        if let Some(s) = u.selects.get_mut("cgen") { for i in 0..s.opts.len() { let v = s.opts[i].1.clone(); s.checked[i] = genes.iter().any(|g| Value::from(*g) == v); } }
+        if let Some(s) = u.selects.get_mut("corigin") { *s = s.clone().with(json!(origin)); }
+        if let Some(s) = u.selects.get_mut("cambition") { *s = s.clone().with(json!(amb)); }
+        if let Some(s) = u.selects.get_mut("chero") { *s = s.clone().with(json!(hero)); }
+        if u.input("in:cname").trim().is_empty() {
+            let people = u.sel("cpeople").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let fe = u.sel("csex").and_then(|v| v.as_bool()).unwrap_or(false);
+            let n = god::random_name(&mut self.dice, people, fe);
+            self.mui.set_input("in:cname", &n);
+        }
+        notify(&mut self.toasts, format!("{p}: filled in. Change anything before you create them."), false);
+    }
+
+    fn edit_pressed(&mut self, c: usize, act: Act) {
+        let Act::Pressed(id) = act else { return };
+        if id == "close" { self.modal = Modal::None; return; }
+        if id.starts_with("in:") { return; }
+        let u = &self.mui;
+        let m = |pairs: Vec<(&str, Value)>| { let mut x = serde_json::Map::from_iter(pairs.into_iter().map(|(k, v)| (k.to_string(), v))); x.insert("c".into(), json!(c)); x };
+        let (act, args) = match id.as_str() {
+            "setstat" => {
+                let Some(st) = u.sel("stat") else { notify(&mut self.toasts, "pick a stat", true); return };
+                let Ok(v) = u.input("in:sval").trim().parse::<f64>() else { notify(&mut self.toasts, "type a value", true); return };
+                ("set_stat", m(vec![("key", st), ("value", json!(v))]))
+            }
+            "addtrait" | "deltrait" => { let Some(t) = u.sel("trait") else { notify(&mut self.toasts, "pick a trait", true); return }; ("set_trait", m(vec![("trait", t), ("on", json!(id == "addtrait"))])) }
+            "addclass" => { let Some(cl) = u.sel("cls") else { notify(&mut self.toasts, "pick a class", true); return }; ("set_class", m(vec![("cls", cl)])) }
+            "give" => ("give_item", m(vec![("name", Value::String({ let n = u.input("in:relic"); if n.trim().is_empty() { "a nameless relic".to_string() } else { n } })), ("rarity", u.sel("rar").unwrap_or(json!(5)))])),
+            "marry" | "love" => {
+                let Some(o) = u.sel("other") else { notify(&mut self.toasts, "pick another person", true); return };
+                let mut x = serde_json::Map::new(); x.insert("a".into(), json!(c)); x.insert("b".into(), o);
+                (if id == "marry" { "marry" } else { "make_love" }, x)
+            }
+            "track" | "untrack" => ("track", m(vec![("on", json!(id == "track"))])),
+            "hero" => ("make_hero", m(vec![])),
+            "crown" => ("crown_character", m(vec![])),
+            "immortal" => ("make_immortal", m(vec![("on", json!(true))])),
+            "concord" => ("name_concord", m(vec![])),
+            "custom" => { let on = self.s.as_ref().unwrap().world.lock().map(|st| !st.chars[c].custom).unwrap_or(true); ("make_custom", m(vec![("on", json!(on))])) }
+            "kill" => ("strike_down", m(vec![])),
+            "raise" => ("raise_dead", m(vec![])),
+            _ => return,
+        };
+        self.god_act(act, args);
+        if matches!(id.as_str(), "addtrait" | "deltrait" | "setstat") { let f = self.mui.focus.clone(); self.open_edit(c); self.mui.focus = f; }
+    }
+
+    // ---------------------------------------------------------------- drawing
+    fn draw(&mut self, f: &mut Frame) {
+        let area = f.area();
+        fill(f.buffer_mut(), area, BG);
+        self.ui.begin();
+        if self.s.is_none() { self.draw_home(f, area); } else { self.draw_world(f, area); }
+        if matches!(self.modal, Modal::None) { self.ui.dropdown(f); } else { self.draw_modal(f, area); }
+        toasts(f, &mut self.toasts);
+    }
+
+    fn draw_home(&mut self, f: &mut Frame, area: Rect) {
+        header(f, Rect { height: 1, ..area }, "Realm of Ages", "");
+        let w = 80.min(area.width);
+        let x = area.x + (area.width - w) / 2;
+        let col = |y: u16, h: u16| Rect { x, y, width: w, height: h };
+        let top = area.y + 1 + (area.height.saturating_sub(31)) / 2;
+        let buf = f.buffer_mut();
+        center(buf, col(top, 1), top + 1, "REALM OF AGES", Style::default().fg(TEXT).add_modifier(Modifier::BOLD));
+        center(buf, col(top, 1), top + 2, "A world that runs a century at a time, for as long as you let it.", Style::default().fg(TEXT));
+        self.ui.button(f, Rect { x, y: top + 4, width: 19, height: 3 }, "new", "Start new world", Variant::Success);
+        self.ui.label(f, col(top + 8, 1), "Saved worlds:", Style::default().fg(TEXT));
+        let items: Vec<String> = self.worlds.iter().map(|(_, m)| {
+            let state = if m["ended"].as_bool().unwrap_or(false) { "ended".to_string() } else { format!("year {}", m["year"].as_i64().unwrap_or(0)) };
+            let old = if m["engine"].as_str() != Some("rust") { ", old engine: read its books on disk" }
+                      else if m["rules"].as_i64().unwrap_or(1) < crate::session::RULES_VERSION { ", older rules: regrows differently" } else { "" };
+            format!("{}  ({state}, seed {}{old})", m["name"].as_str().unwrap_or("?"), m["seed"])
+        }).collect();
+        self.ui.option_list(f, col(top + 9, 12), "worlds", &items);
+        self.ui.button(f, Rect { x, y: top + 22, width: 23, height: 3 }, "load", "Load selected world", Variant::Primary);
+        self.ui.button(f, Rect { x, y: top + 26, width: 10, height: 3 }, "quit", "Quit", Variant::Error);
+        footer(f, Rect { y: area.y + area.height - 1, height: 1, ..area }, &[("^q", "Quit"), ("tab", "next"), ("enter", "press")]);
+    }
+
+    fn stamp(&self) -> i64 { self.s.as_ref().unwrap().year_now.load(Ordering::SeqCst) * 1_000_000 + self.acts as i64 }
+
+    /// Rebuild what the open tab shows, when the world moved and it is free (never waits on a year being run).
+    fn refresh(&mut self, body: Rect) {
+        let s = self.s.clone().unwrap();
         let stamp = self.stamp();
-        let tab_stale = self.views.built[self.tab] != stamp.0 * 1_000_000 + stamp.1 as i64;
-        let map_resized = self.tab == 8 && self.views.map_size != (area.width, area.height);
-        if !(tab_stale || map_resized || self.views.stamp != stamp) { return; }
-        if running && self.last_view_build.elapsed() < Duration::from_millis(900) { return; }
-        let Ok(st) = self.s.world.try_lock() else { return };
-        self.last_view_build = Instant::now();
-        self.views.stamp = stamp;
-        self.views.status = status_line(&st, &self.s);
+        let map_resized = self.tab == 8 && self.views.map_size != (body.width, body.height);
+        if self.views.built[self.tab] == stamp && !map_resized { return; }
+        if self.running() && self.views.last.is_some_and(|t| t.elapsed() < Duration::from_millis(900)) { return; }
+        let Ok(st) = s.world.try_lock() else { return };
+        self.views.last = Some(Instant::now());
+        self.views.status = status_line(&st);
         match self.tab {
             0 => self.views.realms = crate::sheet::realm_rows(&st),
             2 => { self.views.ledger = crate::sheet::ledger_rows(&st, st.year - 100); self.views.tx = crate::sheet::tx_lines(&st, 1500); }
             3 => { self.views.econ = crate::sheet::econ_rows(&st); self.views.classes = crate::sheet::class_rows(&st); self.views.rich = crate::sheet::rich_rows(&st, 40); }
             4 => { self.views.parties = crate::sheet::party_rows(&st); self.views.quests = crate::sheet::quest_rows(&st); self.views.hall = crate::sheet::hall_log(&st, 400); }
             5 => self.views.wars = crate::sheet::war_lines(&st),
-            6 => self.views.people = people_list(&st, &self.query, self.include_dead),
-            7 => self.views.tracked = st.chars.iter().filter(|c| c.tracked).map(|c| (c.id, god::char_label(&st, c.id))).collect(),
-            8 => { self.views.map = map_lines(&st, area.width.saturating_sub(2) as usize, area.height.saturating_sub(4) as usize); self.views.map_size = (area.width, area.height); }
+            6 => {
+                self.views.people = people_list(&st, &self.ui.input("in:people"));
+                let i = self.ui.cursor_of("people-list").min(self.views.people.len().saturating_sub(1));
+                self.ui.cursor.insert("people-list".into(), i);
+                if let Some(&(c, _)) = self.views.people.get(i) {
+                    if self.views.sheet.0 != c { self.ui.scroll.insert("sheet".into(), 0); }
+                    self.views.sheet = (c, crate::sheet::sheet(&st, c));
+                }
+            }
+            7 => self.views.tracked = tracked_lines(&st),
+            8 => { self.views.map = map_lines(&st, body.width as usize - 2, body.height as usize); self.views.map_size = (body.width, body.height); }
             9 => {
-                let mut b: Vec<PathBuf> = std::fs::read_dir(&self.s.dir).map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "md")).collect()).unwrap_or_default();
-                b.sort();
-                self.books = b;
+                let i = self.ui.cursor_of("books").min(BOOKS.len() - 1);
+                self.ui.cursor.insert("books".into(), i);
+                let t = std::fs::read_to_string(s.dir.join(BOOKS[i])).unwrap_or_else(|_| "_Not written yet: move the world forward first._".into());
+                if self.views.book.0 != i { self.ui.scroll.insert("book".into(), 0); }
+                self.views.book = (i, t.chars().take(300_000).collect());
             }
             _ => {}
         }
-        // the selected character's sheet or life
-        if matches!(self.tab, 6 | 7) {
-            let ids: Vec<usize> = if self.tab == 6 { self.views.people.iter().map(|x| x.0).collect() } else { self.views.tracked.iter().map(|x| x.0).collect() };
-            let sel = self.list.selected().unwrap_or(0).min(ids.len().saturating_sub(1));
-            self.list.select(Some(sel));
-            if let Some(&c) = ids.get(sel) {
-                let text = if self.tab == 6 { crate::sheet::sheet(&st, c) } else {
-                    let ch = &st.chars[c];
-                    let mut t = format!("{}\n\n", god::char_label(&st, c));
-                    for (y, cat, line) in &ch.journal { t += &format!("{y:>5} [{cat}] {line}\n"); }
-                    t
-                };
-                self.sheet = (c, text);
-            }
-        }
-        self.views.built[self.tab] = stamp.0 * 1_000_000 + stamp.1 as i64;
+        self.views.built[self.tab] = stamp;
     }
 
-    fn mark_changed(&mut self) { self.acts += 1; }
-
-    fn selected_char(&self) -> Option<usize> {
-        match self.tab {
-            6 => self.views.people.get(self.list.selected().unwrap_or(0)).map(|x| x.0),
-            7 => self.views.tracked.get(self.list.selected().unwrap_or(0)).map(|x| x.0),
-            _ => None,
-        }
-    }
-
-    fn do_act(&mut self, act: &str, args: serde_json::Map<String, Value>) {
-        match self.s.god(act, args) {
-            Ok(t) => { self.note = t; self.mark_changed(); }
-            Err(e) => self.note = format!("The gods cannot: {e}"),
-        }
-    }
-
-    /// Returns true to leave the world.
-    fn key(&mut self, k: KeyEvent) -> bool {
-        if let Some(ov) = self.overlay.take() {
-            self.overlay = self.overlay_key(ov, k);
-            return false;
-        }
-        if self.typing {
-            match k.code {
-                KeyCode::Enter | KeyCode::Esc => self.typing = false,
-                KeyCode::Backspace => { self.query.pop(); }
-                KeyCode::Char(c) => self.query.push(c),
-                _ => {}
-            }
-            self.list.select(Some(0));
-            self.scroll = 0;
-            self.views.built[self.tab] = -1;
-            return false;
-        }
-        let running = self.s.running.load(Ordering::SeqCst);
-        match k.code {
-            KeyCode::Char('q') | KeyCode::Esc => { if running { self.note = "Wait for the years to finish, or press s to stop.".into(); } else { return true; } }
-            KeyCode::Char(c @ '1'..='9') => {
-                if running { self.note = "Already running.".into(); } else if self.s.ended() { self.note = "This world has ended.".into(); }
-                else { let n = PRESETS[(c as u8 - b'1') as usize]; self.s.advance(n); self.note = format!("Moving the world forward {n} years..."); }
-            }
-            KeyCode::Char('s') => { self.s.stop.store(true, Ordering::SeqCst); self.note = "Stopping at the end of this year...".into(); }
-            KeyCode::Right | KeyCode::Tab => { self.tab = (self.tab + 1) % TABS.len(); self.on_tab(); }
-            KeyCode::Left | KeyCode::BackTab => { self.tab = (self.tab + TABS.len() - 1) % TABS.len(); self.on_tab(); }
-            KeyCode::F(n) if (1..=10).contains(&n) => { self.tab = (n - 1) as usize; self.on_tab(); }
-            KeyCode::Char('?') | KeyCode::Char('h') => self.overlay = Some(Overlay::Help),
-            KeyCode::Char('g') if !running => self.overlay = Some(Overlay::Acts(Picker::new("God mode", god::ACTS.iter().map(|a| (a.label.to_string(), json!(a.key), a.help.to_string())).collect()))),
-            KeyCode::Char('c') if !running => self.open_creator(),
-            KeyCode::Char('e') if !running => {
-                if let Some(c) = self.selected_char() { self.overlay = Some(Overlay::Edits(c, edit_picker())); }
-                else if let Ok(st) = self.s.world.try_lock() { self.overlay = Some(Overlay::PickChar(Picker::new("Change whom?", god::char_opts(&st, false)))); }
-            }
-            KeyCode::Char('t') if !running => {
-                if let Some(c) = self.selected_char() {
-                    let on = self.s.world.try_lock().map(|st| !st.chars[c].tracked).unwrap_or(true);
-                    self.do_act("track", serde_json::Map::from_iter([("c".into(), json!(c)), ("on".into(), json!(on))]));
-                }
-            }
-            KeyCode::Char('x') if !running => self.overlay = Some(Overlay::Confirm("End this world for good? Its books and logs stay on disk. (y/n)".into(), "end")),
-            KeyCode::Char('/') if matches!(self.tab, 1 | 6) => { self.typing = true; self.query.clear(); }
-            KeyCode::Char('f') if self.tab == 1 => { self.cat = (self.cat + 1) % (CATEGORIES.len() + 1); self.scroll = 0; }
-            KeyCode::Char('m') if self.tab == 1 => { self.major_only = !self.major_only; self.scroll = 0; }
-            KeyCode::Char('d') if self.tab == 6 => { self.include_dead = !self.include_dead; self.views.built[6] = -1; }
-            KeyCode::Up => { if matches!(self.tab, 6 | 7 | 9) { let s = self.list.selected().unwrap_or(0); self.list.select(Some(s.saturating_sub(1))); self.on_select(); } else { self.scroll += 1; } }
-            KeyCode::Down => { if matches!(self.tab, 6 | 7 | 9) { let s = self.list.selected().unwrap_or(0); self.list.select(Some(s + 1)); self.on_select(); } else { self.scroll = self.scroll.saturating_sub(1); } }
-            KeyCode::PageUp => { if matches!(self.tab, 6 | 7 | 9) { self.sheet_scroll = self.sheet_scroll.saturating_sub(15); } else { self.scroll += 20; } }
-            KeyCode::PageDown => { if matches!(self.tab, 6 | 7 | 9) { self.sheet_scroll += 15; } else { self.scroll = self.scroll.saturating_sub(20); } }
-            KeyCode::Home => { self.scroll = usize::MAX / 2; self.sheet_scroll = 0; }
-            KeyCode::End => { self.scroll = 0; }
-            _ => {}
-        }
-        false
-    }
-
-    fn on_tab(&mut self) { self.list.select(Some(0)); self.scroll = 0; self.sheet_scroll = 0; self.typing = false; self.on_select(); }
-
-    fn on_select(&mut self) {
-        self.sheet_scroll = 0;
-        if self.tab == 9 {
-            let i = self.list.selected().unwrap_or(0).min(self.books.len().saturating_sub(1));
-            self.list.select(Some(i));
-            self.book_text = self.books.get(i).and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_else(|| "Not written yet: move the world forward first.".into());
-        } else {
-            let n = if self.tab == 6 { self.views.people.len() } else { self.views.tracked.len() };
-            if n > 0 { let i = self.list.selected().unwrap_or(0).min(n - 1); self.list.select(Some(i)); }
-            self.views.built[self.tab] = -1;
-        }
-    }
-
-    fn open_creator(&mut self) {
-        let Ok(st) = self.s.world.try_lock() else { self.note = "The world is busy; try again in a moment.".into(); return };
-        let f = god::creator_form(&st);
-        self.overlay = Some(Overlay::Creator(f, god::Dice::new()));
-    }
-
-    fn overlay_key(&mut self, ov: Overlay, k: KeyEvent) -> Option<Overlay> {
-        match ov {
-            Overlay::Help => None,
-            Overlay::Confirm(text, what) => {
-                if matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y')) && what == "end" { self.s.end(); self.mark_changed(); self.note = "The world has ended. Its books are written.".into(); return None; }
-                if matches!(k.code, KeyCode::Char('n') | KeyCode::Esc) { return None; }
-                Some(Overlay::Confirm(text, what))
-            }
-            Overlay::Acts(mut p) => match p.key(k) {
-                PickResult::Chosen(v) => {
-                    let key = v.as_str().unwrap_or("").to_string();
-                    if key == "create" { self.open_creator(); return self.overlay.take(); }
-                    let Ok(st) = self.s.world.try_lock() else { return None };
-                    if key == "edit" { return Some(Overlay::PickChar(Picker::new("Change whom?", god::char_opts(&st, false)))); }
-                    god::act_form(&st, &key).map(|f| Overlay::ActForm(key, f))
-                }
-                PickResult::Cancel | PickResult::Done(_) => None,
-                PickResult::Open => Some(Overlay::Acts(p)),
-            },
-            Overlay::ActForm(key, mut f) => match f.key(k) {
-                FormResult::Submit => { let (act, args) = god::act_args(&key, &f); self.do_act(&act, args); None }
-                FormResult::Cancel => None,
-                FormResult::Open => Some(Overlay::ActForm(key, f)),
-            },
-            Overlay::PickChar(mut p) => match p.key(k) {
-                PickResult::Chosen(v) => Some(Overlay::Edits(v.as_u64().unwrap_or(0) as usize, edit_picker())),
-                PickResult::Cancel | PickResult::Done(_) => None,
-                PickResult::Open => Some(Overlay::PickChar(p)),
-            },
-            Overlay::Edits(c, mut p) => match p.key(k) {
-                PickResult::Chosen(v) => {
-                    let key = v.as_str().unwrap_or("").to_string();
-                    let Ok(st) = self.s.world.try_lock() else { return None };
-                    god::edit_form(&st, &key, c).map(|f| Overlay::EditForm(c, key, f))
-                }
-                PickResult::Cancel | PickResult::Done(_) => None,
-                PickResult::Open => Some(Overlay::Edits(c, p)),
-            },
-            Overlay::EditForm(c, key, mut f) => match f.key(k) {
-                FormResult::Submit => {
-                    let acts = { let st = self.s.world.lock().unwrap(); god::edit_acts(&st, &key, c, &f) };
-                    let mut said = vec![];
-                    for (act, args) in acts { match self.s.god(&act, args) { Ok(t) => said.push(t), Err(e) => said.push(format!("cannot: {e}")) } }
-                    self.mark_changed();
-                    self.note = if said.is_empty() { "Nothing changed.".into() } else { said.join(" ") };
-                    Some(Overlay::Edits(c, edit_picker()))
-                }
-                FormResult::Cancel => Some(Overlay::Edits(c, edit_picker())),
-                FormResult::Open => { if f.multi_done.take().is_some() { god::tidy_traits(&mut f); } Some(Overlay::EditForm(c, key, f)) }
-            },
-            Overlay::Presets(mut p) => match p.key(k) {
-                PickResult::Chosen(v) => {
-                    if let Some(Overlay::Creator(mut f, mut d)) = self.pending_creator.take() { god::apply_archetype(&mut f, v.as_str().unwrap_or(""), &mut d); return Some(Overlay::Creator(f, d)); }
-                    None
-                }
-                PickResult::Cancel | PickResult::Done(_) => self.pending_creator.take(),
-                PickResult::Open => Some(Overlay::Presets(p)),
-            },
-            Overlay::Creator(mut f, mut d) => {
-                if f.picker.is_none() && !f.editing {
-                    match k.code {
-                        KeyCode::Char('p') => {
-                            self.pending_creator = Some(Overlay::Creator(f, d));
-                            return Some(Overlay::Presets(Picker::new("Start from an archetype", god::ARCHETYPES.iter().map(|a| (a.0.to_string(), json!(a.0), a.1.to_string())).collect())));
-                        }
-                        KeyCode::Char('r') => { let p = f.get("people").as_u64().unwrap_or(0) as usize; let fe = f.get("female").as_bool().unwrap_or(false); f.set("name", json!(god::random_name(&mut d, p, fe))); return Some(Overlay::Creator(f, d)); }
-                        KeyCode::Char('R') => { god::randomize(&mut f, &mut d); return Some(Overlay::Creator(f, d)); }
-                        _ => {}
-                    }
-                }
-                match f.key(k) {
-                    FormResult::Submit => {
-                        god::tidy_traits(&mut f);
-                        let args = god::creator_args(&f);
-                        match self.s.god("create_character", args) {
-                            Ok(id) => {
-                                self.mark_changed();
-                                let id: usize = id.trim().parse().unwrap_or(0);
-                                self.note = "They walk into the world. Their life is in the Tracked tab.".into();
-                                self.tab = 7;
-                                self.views.built[7] = -1;
-                                let _ = id;
-                                None
-                            }
-                            Err(e) => { f.note = format!("The gods cannot: {e}"); Some(Overlay::Creator(f, d)) }
-                        }
-                    }
-                    FormResult::Cancel => None,
-                    FormResult::Open => { if f.multi_done.take().is_some() { god::tidy_traits(&mut f); } Some(Overlay::Creator(f, d)) }
-                }
-            }
-        }
-    }
-
-    fn draw(&mut self, f: &mut Frame) {
-        let area = f.area();
-        let [top, tabs_r, body, foot] = Layout::vertical([Constraint::Length(2), Constraint::Length(1), Constraint::Min(5), Constraint::Length(2)]).areas(area);
+    fn draw_world(&mut self, f: &mut Frame, area: Rect) {
+        let s = self.s.clone().unwrap();
+        let y0 = area.y;
+        let body = Rect { x: area.x, y: y0 + 8, width: area.width, height: area.height.saturating_sub(9) };
         self.refresh(body);
-        let msg = self.s.message.lock().unwrap().take();
-        if let Some(m) = msg { self.note = m; self.mark_changed(); }
-        let running = self.s.running.load(Ordering::SeqCst);
-        let year = self.s.year_now.load(Ordering::SeqCst);
-        let ended = if self.s.ended() { "  ENDED" } else { "" };
-        let head = Line::from(vec![Span::styled(format!(" {}{ended} ", self.s.name()), Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
-                                   Span::styled(format!(" Year {year}  "), Style::default().add_modifier(Modifier::BOLD)), Span::raw(self.views.status.clone())]);
-        if running {
-            let [a, b] = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(top);
-            f.render_widget(Paragraph::new(head), a);
-            let (d, t) = (self.s.done.load(Ordering::SeqCst), self.s.total.load(Ordering::SeqCst).max(1));
-            f.render_widget(Gauge::default().ratio((d as f64 / t as f64).min(1.0)).label(format!("running: {d} of {t} years · s stops")).gauge_style(Style::default().fg(ACCENT)), b);
-        } else {
-            f.render_widget(Paragraph::new(head), top);
-        }
-        let titles: Vec<Line> = TABS.iter().enumerate().map(|(i, t)| Line::from(format!("F{} {t}", i + 1))).collect();
-        f.render_widget(Tabs::new(titles).select(self.tab).highlight_style(Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD)).divider("│"), tabs_r);
+        let msg = s.message.lock().unwrap().take();
+        if let Some(msg) = msg { notify(&mut self.toasts, msg, false); self.acts += 1; self.views.built = [-1; TABS.len()]; self.run_started = None; }
+        header(f, Rect { y: y0, height: 1, ..area }, "Realm of Ages", &s.name());
+        let year = s.year_now.load(Ordering::SeqCst);
+        let ended = if s.ended() { " ENDED" } else { "" };
+        let status = Rect { y: y0 + 1, height: 1, ..area };
+        fill(f.buffer_mut(), status, BOOST);
+        let status_text = if self.running() { format!("{}   running... year {year}", s.name()) } else { String::new() };
+        f.buffer_mut().set_line(status.x + 1, status.y, &Line::from(if self.running() {
+            vec![Span::styled(status_text, Style::default().fg(TEXT).bg(BOOST).add_modifier(Modifier::BOLD))]
+        } else { vec![
+            Span::styled(format!("{}{ended}", s.name()), Style::default().fg(TEXT).bg(BOOST).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("   Year {year}   "), Style::default().fg(TEXT).bg(BOOST).add_modifier(Modifier::BOLD)),
+            Span::styled(self.views.status.clone(), Style::default().fg(TEXT).bg(BOOST))] }), area.width.saturating_sub(2));
+        // the controls
+        let labels: Vec<String> = PRESETS.iter().map(|n| format!("+{n}y")).collect();
+        let mut all: Vec<&str> = labels.iter().map(|x| x.as_str()).collect();
+        all.extend(["Stop", "God mode", "End world", "Close"]);
+        let rects = button_row(Rect { x: area.x, y: y0 + 2, width: area.width, height: 3 }, &all);
+        for (i, n) in PRESETS.iter().enumerate() { self.ui.button(f, rects[i], &format!("fwd{n}"), &labels[i], Variant::Success); }
+        let n = PRESETS.len();
+        self.ui.button(f, rects[n], "stop", "Stop", Variant::Warning);
+        self.ui.button(f, rects[n + 1], "god", "God mode", Variant::Primary);
+        self.ui.button(f, rects[n + 2], "end", "End world", Variant::Error);
+        self.ui.button(f, rects[n + 3], "close", "Close", Variant::Default);
+        let running = self.running();
+        let (d, t) = (s.done.load(Ordering::SeqCst), s.total.load(Ordering::SeqCst));
+        let ratio = if t > 0 { Some(d as f64 / t as f64) } else { None };
+        let eta = self.run_started.filter(|_| running && d > 0).map(|st| st.elapsed().mul_f64((t - d) as f64 / d as f64));
+        progress(f, Rect { y: y0 + 5, height: 1, ..area }, ratio, eta);
+        tabs(f, Rect { y: y0 + 6, height: 2, ..area }, &TABS, self.tab, &mut self.ui);
+        self.draw_tab(f, body);
+        footer(f, Rect { y: area.y + area.height - 1, height: 1, ..area }, &[("1", "+1y"), ("2", "+5y"), ("3", "+10y"), ("4", "+50y"), ("5", "+100y"), ("6", "+200y"), ("7", "+300y"), ("8", "+500y"), ("9", "+1000y"), ("g", "God mode"), ("^q", "Quit")]);
+    }
+
+    fn draw_tab(&mut self, f: &mut Frame, r: Rect) {
+        let lbl = |f: &mut Frame, y: u16, t: &str| f.buffer_mut().set_stringn(r.x + 1, y, t, r.width as usize - 2, Style::default().fg(TEXT));
         match self.tab {
-            0 => f.render_widget(table(&["id", "Realm", "People", "Rank", "Rule", "Ruler", "Towns", "Population", "Gold", "Army", "At war with"], &self.views.realms, &[4, 30, 7, 9, 13, 30, 6, 11, 9, 8, 30]).block(Block::default().borders(Borders::ALL)), body),
-            1 => self.draw_chronicle(f, body),
+            0 => self.ui.table(f, r, "realms", &["id", "Realm", "People", "Rank", "Rule", "Ruler", "Towns", "Population", "Gold", "Army", "At war with"], &self.views.realms, &[4, 32, 8, 10, 14, 30, 6, 11, 9, 8, 40], true),
+            1 => {
+                let row = Rect { height: 3, ..r };
+                let sw = 50.min(row.width.saturating_sub(62));
+                self.ui.select(f, Rect { width: 30, ..row }, "chron-cat");
+                self.ui.text_input(f, Rect { x: row.x + 31, width: sw, ..row }, "in:chron", "search...");
+                self.ui.select(f, Rect { x: row.x + 32 + sw, width: 30, ..row }, "chron-level");
+                let s = self.s.clone().unwrap();
+                let ev = s.events.lock().unwrap();
+                let cat = self.ui.sel("chron-cat").and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "all".into());
+                let major = self.ui.sel("chron-level").and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "major".into()) == "major";
+                let q = self.ui.input("in:chron").to_lowercase();
+                let picked: Vec<&crate::session::Event> = ev.iter().rev().filter(|e| (cat == "all" || e.cat == cat) && (!major || e.major) && (q.is_empty() || e.text.to_lowercase().contains(&q))).take(1500).collect();
+                let mut lines: Vec<Line<'static>> = vec![];
+                if picked.len() >= 1500 { lines.push(Line::from(Span::styled("... (older events are in chronicle.md and details.md)", Style::default().fg(MUTED)))); }
+                for e in picked.iter().rev() {
+                    lines.push(Line::from(vec![Span::styled(format!("{:>5}  ", e.year), Style::default().fg(MUTED)), Span::styled(format!("[{}] ", e.cat), Style::default().fg(cat_color(e.cat))),
+                        Span::styled(e.text.replace("**", ""), if e.major { Style::default().fg(TEXT).add_modifier(Modifier::BOLD) } else { Style::default().fg(TEXT) })]));
+                }
+                drop(ev);
+                self.ui.log(f, Rect { y: r.y + 3, height: r.height.saturating_sub(3), ..r }, "chron<", lines, true);
+            }
             2 => {
-                let [a, b] = Layout::vertical([Constraint::Percentage(45), Constraint::Percentage(55)]).areas(body);
-                f.render_widget(table(&["Realm", "Income", "Spending", "Taxes", "Loot", "Tribute", "Armies", "Court", "Interest", "Treasury"], &self.views.ledger, &[30, 10, 10, 10, 9, 9, 9, 9, 9, 10]).block(Block::default().borders(Borders::ALL).title(" The last hundred years ")), a);
-                let lines: Vec<Line> = self.views.tx.iter().rev().skip(self.scroll).take(b.height as usize).map(|(y, amt, t)| Line::from(vec![
-                    Span::styled(format!("{y:>5} "), Style::default().fg(DIM)), Span::styled(format!("{amt:>+11.0}  "), Style::default().fg(if *amt > 0.0 { Color::Green } else { Color::Red })), Span::raw(t.clone())])).collect();
-                f.render_widget(Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Transactions, newest first (↑↓ scroll) ")), b);
+                lbl(f, r.y, "Each crown's treasury over the last 100 years (in, out, by kind), then notable dealings:");
+                let th = (self.views.ledger.len() as u16 + 1).min(r.height / 2).max(3);
+                self.ui.table(f, Rect { y: r.y + 1, height: th, ..r }, "ledger", &["Realm", "Income", "Spending", "Taxes", "Loot", "Tribute", "Armies", "Court", "Interest", "Treasury now"], &self.views.ledger, &[34, 10, 10, 10, 9, 9, 9, 9, 9, 12], false);
+                let lines: Vec<Line<'static>> = self.views.tx.iter().map(|(y, a, t)| Line::from(vec![Span::styled(format!("{y:>5}  "), Style::default().fg(MUTED)),
+                    Span::styled(format!("{a:>+10.0}  "), Style::default().fg(if *a > 0.0 { Color::Green } else { Color::Red })), Span::styled(t.clone(), Style::default().fg(TEXT))])).collect();
+                self.ui.log(f, Rect { y: r.y + 2 + th, height: r.height.saturating_sub(2 + th), ..r }, "tx<", lines, true);
             }
             3 => {
-                let [a, b, c] = Layout::vertical([Constraint::Percentage(35), Constraint::Percentage(35), Constraint::Percentage(30)]).areas(body);
-                f.render_widget(table(&["Realm", "Stage", "Output", "Gold about", "Debt", "Rate", "Credit", "Jobless", "Poverty", "Middle", "Partners", "Top scroll", "Stores", "Bound dead"], &self.views.econ, &[26, 9, 9, 10, 9, 6, 7, 7, 7, 7, 8, 14, 7, 9]).block(Block::default().borders(Borders::ALL).title(" Economies ")), a);
-                f.render_widget(table(&["Realm", "Class", "People", "Share", "Income", "Poor", "Land", "Houses", "Stock", "Coin", "Owns", "Wealth"], &self.views.classes, &[26, 7, 9, 6, 8, 6, 8, 8, 8, 8, 8, 7]).block(Block::default().borders(Borders::ALL).title(" Classes and what they own ")), b);
-                f.render_widget(table(&["Person", "Realm", "Net worth", "Gold", "Work", "#"], &self.views.rich, &[34, 16, 12, 10, 14, 7]).block(Block::default().borders(Borders::ALL).title(" The richest ")), c);
+                let h = r.height.saturating_sub(3) / 3;
+                lbl(f, r.y, "Realms: stage, output, gold in circulation, crown debt and credit, work, poverty, trade");
+                self.ui.table(f, Rect { y: r.y + 1, height: h, ..r }, "econ", &["Realm", "Stage", "Output", "Gold about", "Crown debt", "Rate", "Credit", "Jobless", "Poverty", "Middle class", "Trade partners", "Top scroll", "Monster stores", "Bound dead"], &self.views.econ, &[28, 9, 9, 10, 10, 6, 7, 8, 8, 12, 14, 14, 14, 10], false);
+                lbl(f, r.y + 1 + h, "Classes in each realm: people, income a head, poverty, and what they own (land, houses, stock, coin)");
+                self.ui.table(f, Rect { y: r.y + 2 + h, height: h, ..r }, "classes", &["Realm", "Class", "People", "Share", "Income a head", "Poor", "Land", "Houses", "Stock", "Coin", "Owns a head", "Share of wealth"], &self.views.classes, &[28, 7, 9, 6, 14, 6, 9, 9, 9, 9, 12, 15], false);
+                lbl(f, r.y + 2 + 2 * h, "The richest people in the world, by everything they own");
+                self.ui.table(f, Rect { y: r.y + 3 + 2 * h, height: r.height.saturating_sub(3 + 2 * h), ..r }, "rich", &["Person", "Realm", "Net worth", "Gold in hand", "Work", "#"], &self.views.rich, &[40, 18, 12, 12, 16, 7], false);
             }
             4 => {
-                let [a, b, c] = Layout::vertical([Constraint::Percentage(30), Constraint::Percentage(35), Constraint::Percentage(35)]).areas(body);
-                f.render_widget(table(&["Party", "Seal", "Members", "Done", "Lost", "Formed", "Who"], &self.views.parties, &[26, 10, 8, 6, 5, 7, 60]).block(Block::default().borders(Borders::ALL).title(" Parties of the Wardens' Hall ")), a);
-                f.render_widget(table(&["Seal", "Kind", "Quest", "Reward", "Posted", "Expires"], &self.views.quests, &[10, 12, 60, 8, 7, 8]).block(Block::default().borders(Borders::ALL).title(" Quests posted ")), b);
-                let lines: Vec<Line> = self.views.hall.iter().rev().take(c.height as usize).map(|l| Line::from(l.clone())).collect();
-                f.render_widget(Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" The Hall's log, newest first ")), c);
+                let h = r.height.saturating_sub(3) / 3;
+                lbl(f, r.y, "The Wardens' Hall: parties, by seal");
+                self.ui.table(f, Rect { y: r.y + 1, height: h, ..r }, "parties", &["Party", "Seal", "Members", "Quests done", "Lost", "Formed", "Who"], &self.views.parties, &[28, 10, 8, 11, 5, 7, 70], false);
+                lbl(f, r.y + 1 + h, "The quest board");
+                self.ui.table(f, Rect { y: r.y + 2 + h, height: h, ..r }, "quests", &["Seal", "Kind", "Quest", "Reward", "Posted", "Expires"], &self.views.quests, &[10, 12, 64, 8, 7, 8], false);
+                lbl(f, r.y + 2 + 2 * h, "Lately done, failed or fled");
+                let lines: Vec<Line<'static>> = self.views.hall.iter().map(|l| Line::from(Span::styled(l.clone(), Style::default().fg(if l.contains("failed") { Color::Red } else if l.contains("done") || l.contains("slain") { Color::Green } else { TEXT })))).collect();
+                self.ui.log(f, Rect { y: r.y + 3 + 2 * h, height: r.height.saturating_sub(3 + 2 * h), ..r }, "hall<", lines, true);
             }
             5 => {
-                let lines: Vec<Line> = self.views.wars.iter().skip(self.scroll.min(self.views.wars.len())).map(|l| if l.chars().all(|c| !c.is_lowercase()) && !l.is_empty() { Line::from(Span::styled(l.clone(), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))) } else { Line::from(l.clone()) }).collect();
-                f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" Wars (↑↓ scroll) ")), body);
+                let lines: Vec<Line<'static>> = self.views.wars.iter().map(|l| if !l.is_empty() && l.chars().all(|c| !c.is_lowercase()) { Line::from(Span::styled(l.clone(), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))) } else { Line::from(Span::styled(l.clone(), Style::default().fg(TEXT))) }).collect();
+                self.ui.log(f, r, "wars", lines, false);
             }
-            6 | 7 => self.draw_people(f, body),
-            8 => f.render_widget(Paragraph::new(self.views.map.clone()).block(Block::default().borders(Borders::ALL).title(" The world   ♛ seat · ⚔ host · ▲ dragon · ◆ demon · ✸ calamity   (full map: maps/latest.png) ")), body),
-            9 => self.draw_books(f, body),
+            6 => {
+                let lw = 60.min(r.width / 2);
+                let left = Rect { width: lw, ..r };
+                self.ui.text_input(f, Rect { height: 3, ..left }, "in:people", "name or id (prefix dead: to include the dead)");
+                let items: Vec<String> = self.views.people.iter().map(|x| x.1.clone()).collect();
+                self.ui.option_list(f, Rect { y: left.y + 3, height: left.height.saturating_sub(6), ..left }, "people-list", &items);
+                let br = button_row(Rect { y: left.y + left.height.saturating_sub(3), height: 3, ..left }, &["Track", "Untrack", "Edit (god)"]);
+                self.ui.button(f, br[0], "track", "Track", Variant::Default);
+                self.ui.button(f, br[1], "untrack", "Untrack", Variant::Default);
+                self.ui.button(f, br[2], "edit", "Edit (god)", Variant::Primary);
+                let right = Rect { x: r.x + lw + 1, width: r.width.saturating_sub(lw + 1), ..r };
+                let text = if self.views.people.is_empty() { String::new() } else { self.views.sheet.1.clone() };
+                self.ui.log(f, right, "sheet", markdown(&text), false);
+            }
+            7 => {
+                let lines = if self.views.tracked.is_empty() { vec![Line::from("No one is tracked. Track people from the People tab, or create one in God mode.")] } else { self.views.tracked.clone() };
+                self.ui.log(f, r, "tracked<", lines, true);
+            }
+            8 => {
+                let mut lines = self.views.map.clone();
+                if let Some(s) = &self.s { lines.push(Line::from(Span::styled(format!("Full map: {}   ♛ seat  ⚔ host  ▲ dragon  ◆ demon  ✸ calamity", s.dir.join("maps").join("latest.png").display()), Style::default().fg(MUTED)))); }
+                for (i, l) in lines.iter().enumerate().take(r.height as usize) { f.buffer_mut().set_line(r.x + 1, r.y + i as u16, l, r.width.saturating_sub(2)); }
+            }
+            9 => {
+                let left = Rect { width: 24, ..r };
+                let items: Vec<String> = BOOKS.iter().map(|b| b.to_string()).collect();
+                self.ui.option_list(f, left, "books", &items);
+                let right = Rect { x: r.x + 25, width: r.width.saturating_sub(25), ..r };
+                let text = self.views.book.1.clone();
+                self.ui.log(f, right, "book", markdown(&text), false);
+            }
             _ => {}
         }
-        let keys = match self.tab {
-            1 => "1-9 run 1·5·10·50·100·200·300·500·1000 yrs · / search · f kind · m major only · ↑↓ PgUp/PgDn scroll · g god · c create · ? help · q back",
-            6 => "1-9 run years · / search · d dead too · ↑↓ choose · PgUp/PgDn sheet · e change · t track · c create · g god · ? help · q back",
-            7 => "1-9 run years · ↑↓ choose · PgUp/PgDn life · e change · t untrack · c create · g god · ? help · q back",
-            _ => "1-9 run 1·5·10·50·100·200·300·500·1000 yrs · ←→/F1-F10 tabs · g god mode · c create character · x end world · ? help · q back",
-        };
-        f.render_widget(Paragraph::new(vec![Line::from(Span::styled(self.note.clone(), Style::default().fg(Color::Rgb(200, 220, 255)))), Line::from(Span::styled(keys, Style::default().fg(DIM)))]), foot);
-        match self.overlay.as_mut() {
-            Some(Overlay::Help) => draw_help(f, area),
-            Some(Overlay::Confirm(t, _)) => { let r = centered(area, 50, 20); f.render_widget(Clear, r); f.render_widget(Paragraph::new(t.as_str()).wrap(Wrap { trim: true }).block(Block::default().borders(Borders::ALL).title(" Are you sure? ")), r); }
-            Some(Overlay::Acts(p)) | Some(Overlay::Presets(p)) | Some(Overlay::PickChar(p)) | Some(Overlay::Edits(_, p)) => p.draw(f, area),
-            Some(Overlay::ActForm(_, form)) | Some(Overlay::EditForm(_, _, form)) | Some(Overlay::Creator(form, _)) => form.draw(f, area),
-            None => {}
+    }
+
+    fn draw_modal(&mut self, f: &mut Frame, area: Rect) {
+        self.mui.begin();
+        match self.modal {
+            Modal::NewWorld => {
+                let inner = modal(f, centered(area, 70, 19), ACCENT);
+                self.mui.label(f, inner, "A new world", Style::default().fg(TEXT).bg(SURFACE).add_modifier(Modifier::BOLD));
+                self.mui.text_input(f, Rect { y: inner.y + 2, height: 3, ..inner }, "in:name", "World name");
+                self.mui.text_input(f, Rect { y: inner.y + 5, height: 3, ..inner }, "in:seed", "Seed (a number)");
+                self.mui.select(f, Rect { y: inner.y + 8, height: 3, ..inner }, "size");
+                let br = button_row(Rect { y: inner.y + 12, height: 3, ..inner }, &["Create", "Cancel"]);
+                self.mui.button(f, br[0], "ok", "Create", Variant::Success);
+                self.mui.button(f, br[1], "cancel", "Cancel", Variant::Default);
+            }
+            Modal::Confirm => {
+                let inner = modal(f, centered(area, 64, 9), ACCENT);
+                self.mui.label(f, inner, "End this world for good? Its books and logs stay on disk.", Style::default().fg(TEXT).bg(SURFACE));
+                let br = button_row(Rect { y: inner.y + 3, height: 3, ..inner }, &["Yes", "No"]);
+                self.mui.button(f, br[0], "yes", "Yes", Variant::Error);
+                self.mui.button(f, br[1], "no", "No", Variant::Default);
+            }
+            Modal::God => self.draw_god(f, area),
+            Modal::Edit(c) => self.draw_edit(f, area, c),
+            Modal::None => {}
+        }
+        self.mui.dropdown(f);
+    }
+
+    fn draw_god(&mut self, f: &mut Frame, area: Rect) {
+        let outer = Rect { x: area.x + area.width / 40, y: area.y + area.height / 20, width: area.width * 95 / 100, height: area.height * 9 / 10 };
+        let inner = modal(f, outer, MAGENTA);
+        let inner = Rect { width: inner.width.saturating_sub(2), ..inner };
+        let u = &mut self.mui;
+        let bottom = (inner.y + inner.height) as i32;
+        let label = |f: &mut Frame, r: Rect, t: &str, st: Style| { f.buffer_mut().set_stringn(r.x, r.y, t, r.width as usize, st.bg(SURFACE)); };
+        // each row is drawn only when it is wholly in view
+        let mut rows: Vec<(u16, Box<dyn FnMut(&mut Frame, Rect, &mut Ui)>)> = vec![];
+        rows.push((1, Box::new(move |f, r, _| label(f, r, "GOD MODE  (every act is written into the chronicle)", Style::default().fg(MAGENTA).add_modifier(Modifier::BOLD)))));
+        rows.push((1, Box::new(move |f, r, _| label(f, r, "The world", Style::default().fg(TEXT).add_modifier(Modifier::BOLD)))));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 3); u.select(f, p[0], "ra"); u.select(f, p[1], "rb"); u.select(f, p[2], "land"); })));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 4); u.select(f, p[0], "cul"); u.select(f, p[1], "gov"); u.select(f, p[2], "mon"); u.text_input(f, p[3], "in:amt", "amount / years"); })));
+        let button_rows: [Vec<(&'static str, &'static str, Variant)>; 3] = [
+            vec![("calamity", "Wake calamity (continent)", Variant::Default), ("wcalamity", "World calamity", Variant::Default), ("monster", "Loose monster on A", Variant::Default), ("plague", "Plague on A", Variant::Default), ("famine", "Famine on A", Variant::Default), ("bless", "Bless harvest of A", Variant::Default)],
+            vec![("gold", "Gold to A", Variant::Default), ("war", "A declares war on B", Variant::Default), ("peace", "Peace A and B", Variant::Default), ("govset", "Set A's government", Variant::Default), ("era", "Raise people's era", Variant::Default), ("golden", "Golden age for people", Variant::Default)],
+            vec![("break", "Break A on continent", Variant::Error), ("curse", "Curse A's ruling house", Variant::Error), ("smite", "Smite A's seat", Variant::Error)],
+        ];
+        for bs in button_rows {
+            rows.push((3, Box::new(move |f, r, u| { let labels: Vec<&str> = bs.iter().map(|b| b.1).collect(); let rr = button_row(r, &labels); for (i, b) in bs.iter().enumerate() { u.button(f, rr[i], b.0, b.1, b.2); } })));
+        }
+        rows.push((1, Box::new(move |f, r, _| label(f, r, "Make a person (tracked by default; pick traits and bloodlines from the lists, or start from a preset)", Style::default().fg(TEXT).add_modifier(Modifier::BOLD)))));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 5); u.text_input(f, p[0], "in:cname", "Name"); u.select(f, p[1], "cpeople"); u.select(f, p[2], "csex"); u.text_input(f, p[3], "in:cage", "Age"); u.select(f, p[4], "crealm"); })));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 5); u.select(f, p[0], "cclass"); u.text_input(f, p[1], "in:clevel", "Level"); u.text_input(f, p[2], "in:cprow", "Prowess"); u.text_input(f, p[3], "in:ctal", "Talent 0-10"); u.text_input(f, p[4], "in:cgold", "Gold"); })));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 2); u.text_input(f, p[0], "in:cattrs", "dip,mar,ste,intr,lrn,lore e.g. 12,10,8,6,14,9"); u.select(f, p[1], "cpers"); })));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 3); u.select(f, p[0], "cgen"); u.select(f, p[1], "clat"); u.select(f, p[2], "chero"); })));
+        rows.push((3, Box::new(|f, r, u| { let p = parts(r, 4); u.select(f, p[0], "corigin"); u.select(f, p[1], "cambition"); u.select(f, p[2], "cpreset"); u.text_input(f, p[3], "in:cstory", "their story (optional)"); })));
+        rows.push((1, Box::new(move |f, r, _| label(f, r, "Lists open on click or Enter; type to search them. Checklists: Space ticks, Enter closes. Opposite traits cancel.", Style::default().fg(MUTED)))));
+        rows.push((3, Box::new(|f, r, u| { let rr = button_row(r, &["Create person", "Close"]); u.button(f, rr[0], "create", "Create person", Variant::Success); u.button(f, rr[1], "close", "Close", Variant::Default); })));
+        // every control, in Tab order, and the row each sits on, so Tab reaches controls scrolled out of view
+        const ROW_IDS: [&[&str]; 15] = [&[], &[], &["ra", "rb", "land"], &["cul", "gov", "mon", "in:amt"],
+            &["calamity", "wcalamity", "monster", "plague", "famine", "bless"], &["gold", "war", "peace", "govset", "era", "golden"], &["break", "curse", "smite"], &[],
+            &["in:cname", "cpeople", "csex", "in:cage", "crealm"], &["cclass", "in:clevel", "in:cprow", "in:ctal", "in:cgold"], &["in:cattrs", "cpers"],
+            &["cgen", "clat", "chero"], &["corigin", "cambition", "cpreset", "in:cstory"], &[], &["create", "close"]];
+        let heights: Vec<i32> = rows.iter().map(|(h, _)| *h as i32).collect();
+        let total: i32 = heights.iter().map(|h| h + 1).sum();
+        let max = (total - inner.height as i32).max(0);
+        if let Some(ri) = ROW_IDS.iter().position(|ids| ids.contains(&u.focus.as_str())) {
+            let top: i32 = heights[..ri].iter().map(|h| h + 1).sum();
+            let s = self.god_scroll as i32;
+            if top < s { self.god_scroll = top as u16; }
+            if top + heights[ri] > s + inner.height as i32 { self.god_scroll = (top + heights[ri] - inner.height as i32).clamp(0, max) as u16; }
+        }
+        if self.god_scroll as i32 > max { self.god_scroll = max as u16; }
+        let mut y = inner.y as i32 - self.god_scroll as i32;
+        for (h, mut draw) in rows {
+            let h = h as i32;
+            if y >= inner.y as i32 && y + h <= bottom { draw(f, Rect { x: inner.x, y: y as u16, width: inner.width, height: h as u16 }, u); }
+            y += h + 1;
+        }
+        u.order = ROW_IDS.iter().flat_map(|ids| ids.iter().map(|x| x.to_string())).collect();
+        let max = max as u16;
+        if max > 0 {
+            let buf = f.buffer_mut();
+            let x = outer.x + outer.width - 3;
+            for yy in 0..inner.height { buf[(x, inner.y + yy)].set_symbol("│").set_style(Style::default().fg(Color::Rgb(70, 70, 70)).bg(SURFACE)); }
+            let pos = inner.y + (self.god_scroll as u32 * (inner.height as u32 - 1) / max as u32) as u16;
+            buf[(x, pos)].set_symbol("█").set_style(Style::default().fg(MAGENTA).bg(SURFACE));
         }
     }
 
-    fn draw_chronicle(&mut self, f: &mut Frame, area: Rect) {
-        let ev = self.s.events.lock().unwrap();
-        let cat = if self.cat == 0 { None } else { Some(CATEGORIES[self.cat - 1]) };
-        let q = self.query.to_lowercase();
-        let h = area.height.saturating_sub(2) as usize;
-        let picked: Vec<&crate::session::Event> = ev.iter().rev().filter(|e| cat.is_none_or(|c| e.cat == c) && (!self.major_only || e.major) && (q.is_empty() || e.text.to_lowercase().contains(&q)))
-            .skip(self.scroll.min(ev.len())).take(h).collect();
-        let lines: Vec<Line> = picked.iter().rev().map(|e| Line::from(vec![
-            Span::styled(format!("{:>5} ", e.year), Style::default().fg(DIM)),
-            Span::styled(format!("[{}] ", e.cat), Style::default().fg(cat_color(e.cat))),
-            Span::styled(e.text.replace("**", ""), if e.major { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() }),
-        ])).collect();
-        let title = format!(" Chronicle · kind: {} · {} · search: {}{} ", cat.unwrap_or("all"), if self.major_only { "major only" } else { "all events" },
-                            if self.query.is_empty() { "-".into() } else { format!("\"{}\"", self.query) }, if self.typing { "▏" } else { "" });
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(title)), area);
-    }
-
-    fn draw_people(&mut self, f: &mut Frame, area: Rect) {
-        let [l, r] = Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)]).areas(area);
-        let rows = if self.tab == 6 { &self.views.people } else { &self.views.tracked };
-        let items: Vec<ListItem> = rows.iter().map(|x| ListItem::new(x.1.clone())).collect();
-        let title = if self.tab == 6 {
-            format!(" People{} · search: {}{} ", if self.include_dead { " (and the dead)" } else { "" }, if self.query.is_empty() { "-".into() } else { format!("\"{}\"", self.query) }, if self.typing { "▏" } else { "" })
-        } else { " Tracked (t on People to add, c to create) ".to_string() };
-        f.render_stateful_widget(List::new(items).block(Block::default().borders(Borders::ALL).title(title)).highlight_style(Style::default().bg(Color::Rgb(60, 60, 90)).add_modifier(Modifier::BOLD)).highlight_symbol("▶ "), l, &mut self.list);
-        let text = if rows.is_empty() { if self.tab == 7 { "No one is tracked yet. Pick someone on the People tab and press t, or press c to create a character.".to_string() } else { String::new() } } else { self.sheet.1.clone() };
-        f.render_widget(Paragraph::new(md_lines(&text)).wrap(Wrap { trim: false }).scroll((self.sheet_scroll, 0)).block(Block::default().borders(Borders::ALL).title(if self.tab == 6 { " Sheet (PgUp/PgDn) " } else { " Their life (PgUp/PgDn) " })), r);
-    }
-
-    fn draw_books(&mut self, f: &mut Frame, area: Rect) {
-        let [l, r] = Layout::horizontal([Constraint::Length(22), Constraint::Min(20)]).areas(area);
-        if self.book_text.is_empty() && !self.books.is_empty() { self.on_select(); }
-        let items: Vec<ListItem> = self.books.iter().map(|p| ListItem::new(p.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_default())).collect();
-        f.render_stateful_widget(List::new(items).block(Block::default().borders(Borders::ALL).title(" Books ")).highlight_style(Style::default().bg(Color::Rgb(60, 60, 90))).highlight_symbol("▶ "), l, &mut self.list);
-        let text: String = self.book_text.chars().take(400_000).collect();
-        f.render_widget(Paragraph::new(md_lines(&text)).wrap(Wrap { trim: false }).scroll((self.sheet_scroll, 0)).block(Block::default().borders(Borders::ALL).title(" PgUp/PgDn to read ")), r);
+    fn draw_edit(&mut self, f: &mut Frame, area: Rect, c: usize) {
+        let outer = Rect { x: area.x + area.width / 40, y: area.y + area.height / 20, width: area.width * 95 / 100, height: (area.height * 9 / 10).min(28) };
+        let inner = modal(f, outer, MAGENTA);
+        let name = self.s.as_ref().and_then(|s| s.world.try_lock().ok().map(|st| crate::sheet::full_name(&st, c))).unwrap_or_default();
+        let u = &mut self.mui;
+        f.buffer_mut().set_stringn(inner.x, inner.y, format!("GOD MODE: {name} (#{c})"), inner.width as usize, Style::default().fg(MAGENTA).bg(SURFACE).add_modifier(Modifier::BOLD));
+        let mut y = inner.y + 2;
+        let mut row = |h: u16| { let r = Rect { x: inner.x, y, width: inner.width, height: h }; y += h + 1; r };
+        let r = row(3); let p = parts(r, 3);
+        u.select(f, p[0], "stat"); u.text_input(f, p[1], "in:sval", "value"); u.button(f, Rect { width: 14.min(p[2].width), ..p[2] }, "setstat", "Set stat", Variant::Success);
+        let r = row(3); let p = parts(r, 3);
+        u.select(f, p[0], "trait"); u.button(f, Rect { width: 16.min(p[1].width), ..p[1] }, "addtrait", "Give trait", Variant::Success); u.button(f, Rect { width: 16.min(p[2].width), ..p[2] }, "deltrait", "Take trait", Variant::Warning);
+        let r = row(3); let p = parts(r, 5);
+        u.select(f, p[0], "cls"); u.button(f, p[1], "addclass", "Add class", Variant::Default); u.text_input(f, p[2], "in:relic", "relic name"); u.select(f, p[3], "rar"); u.button(f, p[4], "give", "Give relic", Variant::Default);
+        let r = row(3); let p = parts(r, 3);
+        u.select(f, p[0], "other"); u.button(f, p[1], "marry", "Marry them", Variant::Default); u.button(f, p[2], "love", "Make them fall in love", Variant::Default);
+        let r = row(3);
+        let bs = [("track", "Track"), ("untrack", "Untrack"), ("hero", "Make hero"), ("crown", "Crown in their realm"), ("immortal", "Make ageless"), ("concord", "Name the Concord")];
+        let rr = button_row(r, &bs.iter().map(|b| b.1).collect::<Vec<_>>());
+        for (i, b) in bs.iter().enumerate() { u.button(f, rr[i], b.0, b.1, Variant::Default); }
+        let r = row(3);
+        let rr = button_row(r, &["Make custom", "Strike down", "Raise from the dead", "Close"]);
+        u.button(f, rr[0], "custom", "Make custom", Variant::Primary);
+        u.button(f, rr[1], "kill", "Strike down", Variant::Error);
+        u.button(f, rr[2], "raise", "Raise from the dead", Variant::Warning);
+        u.button(f, rr[3], "close", "Close", Variant::Default);
     }
 }
 
-fn edit_picker() -> Picker { Picker::new("Change them", god::EDITS.iter().map(|e| (e.1.to_string(), json!(e.0), e.2.to_string())).collect()) }
+/// Opposites cancel, and four personality traits at most.
+fn tidy_personality(s: &mut Select) {
+    let mut kept: Vec<usize> = vec![];
+    for i in 0..s.opts.len() {
+        if !s.checked[i] { continue; }
+        let opp = PERSONALITY.iter().position(|p| Value::from(*p) == s.opts[i].1).map(|j| PERSONALITY[j ^ 1]);
+        if kept.iter().any(|&k| opp.is_some_and(|o| Value::from(o) == s.opts[k].1)) || kept.len() >= 4 { s.checked[i] = false; continue; }
+        kept.push(i);
+    }
+}
 
-fn status_line(st: &State, s: &Session) -> String {
-    let towns: Vec<&world::people::Town> = st.towns.iter().filter(|t| t.alive).collect();
-    let pop: f64 = towns.iter().map(|t| t.pop).sum();
+fn status_line(st: &State) -> String {
+    let towns = st.towns.iter().filter(|t| t.alive).count();
+    let pop: f64 = st.towns.iter().filter(|t| t.alive).map(|t| t.pop).sum();
     let realms = st.realms.iter().filter(|k| !k.extinct).count();
-    let wars = st.wars.len();
     let living = st.living.iter().filter(|&&c| st.chars[c].alive).count();
     let heroes = st.living.iter().filter(|&&c| st.chars[c].alive && st.chars[c].hero).count();
     let monsters = st.monsters.iter().filter(|m| m.alive).count();
+    let cal = st.monsters.iter().filter(|m| m.alive && m.kind == "calamity").count();
     let tracked = st.chars.iter().filter(|c| c.tracked).count();
-    let _ = s;
-    format!("· {pop:.0} people in {} towns · {realms} realms · {wars} wars · {living} notables · {heroes} heroes · {monsters} monsters · {tracked} tracked", towns.len())
+    format!("Population {pop:.0} in {towns} towns   Realms {realms}   Wars {}   Notables {living}   Heroes {heroes}   Monsters {monsters} (calamities {cal})   Tracked {tracked}", st.wars.len())
 }
 
-fn people_list(st: &State, query: &str, dead: bool) -> Vec<(usize, String)> {
+fn people_list(st: &State, query: &str) -> Vec<(usize, String)> {
     let q = query.to_lowercase();
+    let dead = q.starts_with("dead:");
+    let q = q.trim_start_matches("dead:").trim().to_string();
     let mut ids: Vec<usize> = if dead { (0..st.chars.len()).collect() } else { st.living.iter().copied().filter(|&c| st.chars[c].alive).collect() };
-    if !q.is_empty() {
-        ids.retain(|&c| crate::sheet::full_name(st, c).to_lowercase().contains(&q) || q.parse::<usize>().ok() == Some(c));
-    }
+    if !q.is_empty() { ids.retain(|&c| crate::sheet::full_name(st, c).to_lowercase().contains(&q) || q.parse::<usize>().ok() == Some(c)); }
     let score = |c: usize| { let ch = &st.chars[c]; ch.renown + if ch.tracked { 5000.0 } else { 0.0 } + if ch.ruled.is_some_and(|r| r.2.is_none()) { 3000.0 } else { 0.0 } };
     ids.sort_by(|&a, &b| score(b).partial_cmp(&score(a)).unwrap());
-    ids.truncate(400);
-    ids.into_iter().map(|c| (c, god::char_label(st, c))).collect()
+    ids.truncate(60);
+    ids.into_iter().map(|c| {
+        let ch = &st.chars[c];
+        let tag = if ch.tracked { " ★" } else { "" };
+        let ruler = if ch.ruled.is_some_and(|r| r.2.is_none()) { " ♛" } else { "" };
+        (c, format!("{}{ruler}{tag}  ({}, {}, lv {}, #{c})", crate::sheet::full_name(st, c), PEOPLES[ch.people], ch.age(st.year), ch.level))
+    }).collect()
+}
+
+fn tracked_lines(st: &State) -> Vec<Line<'static>> {
+    let mut out = vec![];
+    for c in st.chars.iter().filter(|c| c.tracked) {
+        let fate = if c.alive { String::new() } else { format!(" (died {}: {})", c.died.unwrap_or(0), c.cause.clone().unwrap_or_default()) };
+        out.push(Line::from(""));
+        out.push(Line::from(Span::styled(format!("{}{fate}", crate::sheet::full_name(st, c.id)), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+        for (y, cat, t) in c.journal.iter().rev().take(300).rev() {
+            out.push(Line::from(vec![Span::styled(format!("{y:>5}  "), Style::default().fg(MUTED)), Span::styled(format!("[{cat}] "), Style::default().fg(cat_color(cat))), Span::styled(t.replace("**", ""), Style::default().fg(TEXT))]));
+        }
+    }
+    out
 }
 
 fn map_lines(st: &State, cols: usize, rows: usize) -> Vec<Line<'static>> {
-    let cells = crate::map::terminal(st, cols, rows);
+    let cells = crate::map::terminal(st, cols, rows.saturating_sub(1));
     cells.into_iter().map(|row| Line::from(row.into_iter().map(|c| {
         let bg = Color::Rgb(c.bottom[0], c.bottom[1], c.bottom[2]);
         match c.symbol {
@@ -593,28 +906,4 @@ fn map_lines(st: &State, cols: usize, rows: usize) -> Vec<Line<'static>> {
             None => Span::styled("▀", Style::default().fg(Color::Rgb(c.top[0], c.top[1], c.top[2])).bg(bg)),
         }
     }).collect::<Vec<_>>())).collect()
-}
-
-/// Markdown made readable in a terminal: headings bold, emphasis stripped.
-fn md_lines(text: &str) -> Vec<Line<'static>> {
-    text.lines().map(|l| {
-        if let Some(h) = l.strip_prefix("### ").or_else(|| l.strip_prefix("## ")).or_else(|| l.strip_prefix("# ")) {
-            Line::from(Span::styled(h.to_string(), Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)))
-        } else { Line::from(l.replace("**", "")) }
-    }).collect()
-}
-
-fn draw_help(f: &mut Frame, area: Rect) {
-    let r = centered(area, 70, 80);
-    f.render_widget(Clear, r);
-    let lines = vec![
-        "MOVING TIME", "  1 2 3 4 5 6 7 8 9   run 1, 5, 10, 50, 100, 200, 300, 500 or 1000 years", "  s                   stop at the end of the current year", "",
-        "LOOKING AROUND", "  ← → or Tab, F1-F10   switch tabs", "  ↑ ↓                 move in a list, or scroll", "  PgUp PgDn           scroll a sheet, a life or a book",
-        "  /                   search (Chronicle, People)", "  f / m               chronicle: kind of event / major only", "  d                   people: include the dead", "",
-        "THE GODS", "  g                   god mode: every act on the world", "  c                   create a character (presets: p, roll a name: r, randomize: R)",
-        "  e                   change the selected character (or pick one)", "  t                   track or stop tracking the selected character", "  x                   end the world", "",
-        "IN FORMS", "  ↑ ↓ field · ← → change (Shift ×10) · Enter edit, choose from a list or tick a checklist · F10 do it · Esc back", "",
-        "  q or Esc            back to the worlds list (the world is saved)", "", "Press any key.",
-    ];
-    f.render_widget(Paragraph::new(lines.into_iter().map(Line::from).collect::<Vec<_>>()).block(Block::default().borders(Borders::ALL).title(Span::styled(" Keys ", Style::default().fg(ACCENT)))), r);
 }

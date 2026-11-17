@@ -250,7 +250,9 @@ impl State {
         let ch = &self.chars[c];
         // the birth as it was; losses that came later get their own lines below
         let birth = ch.origin_story.split(" Orphaned at ").next().unwrap_or("").split(" Lost their ").next().unwrap_or("").to_string();
-        let mut past: Vec<(i64, &'static str, String)> = vec![(ch.born, "lives", birth)];
+        // someone the gods set down grown arrives the year they are made, not the year they were born
+        let at = if birth.starts_with("Set down") { y } else { ch.born };
+        let mut past: Vec<(i64, &'static str, String)> = vec![(at, "lives", birth)];
         for &k in &ch.children { past.push((self.chars[k].born, "heart", format!("A child, {}, is born.", self.chars[k].name))); }
         for p in [ch.father, ch.mother] {
             if p != NONE { if let Some(d) = self.chars[p].died { if d <= y {

@@ -66,29 +66,26 @@ villain who returns each age against a marked hero and a seer.
 
 ## Playing
 
-`bin/realm-tui` opens the game. Found a new world (name, seed, size) or open a saved one. Press `?` anywhere for the keys.
+`bin/realm-tui` opens the game: start a new world (name, seed, size) or load a saved one.
 
-| Key | Action |
-|---|---|
-| `1` to `9` | run 1, 5, 10, 50, 100, 200, 300, 500 or 1000 years (`s` stops at the end of the year) |
-| `←` `→`, `F1` to `F10` | switch tabs |
-| `g` | god mode: every act on the world, each a form whose choices are searchable lists |
-| `c` | create a character |
-| `e` | change the selected character (stats, traits, class, items, loves, fate) |
-| `t` | track or stop tracking the selected character |
-| `/` | search the chronicle or the people |
-| `x` | end the world |
-| `q` | back to the worlds list (the world is saved) |
+On a world, the row of buttons runs it forward **+1y, +5y, +10y, +50y, +100y, +200y, +300y, +500y or +1000y**
+(or press `1` to `9`), **Stop** ends a run at the end of the year, **God mode** opens every act on the world,
+**End world** closes its chronicle, and **Close** goes back to the worlds list. Everything can be clicked; Tab moves
+between controls and Enter presses them; `←` `→` switch tabs.
 
-**Tabs:** Realms, Chronicle (filter by kind with `f`, major only with `m`), Money (every crown's books and
-transactions), Economy (output, debt, poverty, classes and what they own, the richest people), Guild, Wars,
-People (search, sheets, the dead with `d`), Tracked (the life story of everyone you track), Map, and Books.
+**Tabs:** Realms, Chronicle (filter by kind, search, major only), Transactions (every crown's books and notable
+dealings), Economy (output, debt, poverty, classes and what they own, the richest people), Guild, Wars, People
+(search, sheets, **Track**, **Untrack**, **Edit (god)**; prefix a search with `dead:` for the dead), Tracked (the
+life story of everyone you track), Map, and Books.
 
-**Creating a character** works like starting one in CK3 or Oblivion: pick a people, sex, age and realm; an origin and
-an ambition; a class and level; the six stats, prowess and talent; personality traits, inborn traits and power
-bloodlines from checklists that describe each one; and every skill. `p` starts from an archetype (Warrior, Knight,
-Ranger, Thief, Wizard, Priest, Ruler-in-waiting, Scholar, Artist, Merchant, Runesmith, Hero of legend), `r` rolls a
-name, `R` randomizes everything. Opposite traits cancel each other.
+**God mode** has the world's acts as buttons (calamities, monsters, plague, famine and plenty, gold, war and peace,
+governments, eras, golden ages, breaking realms, curses, smiting) with the realms, continents and peoples to pick
+from, and **Make a person**: name, people, sex, age, realm, class, level, stats, prowess, talent, gold, personality,
+inborn traits and bloodlines (shown or hidden), hero or not, origin, ambition and their story. Traits and bloodlines
+are checklists that say what each does, and a preset (Warrior, Knight, Ranger, Thief, Wizard, Priest,
+Ruler-in-waiting, Scholar, Artist, Merchant, Runesmith, Hero of legend) fills everything in for you to change.
+**Edit (god)** changes anyone: stats and skills, traits, classes, relics, marriages and loves, tracking, heroes,
+crowns, agelessness, the Concord, death and return.
 
 **Lives.** Every child is born with an origin drawn from the world around them (a famine year, a plague, a war, a
 ruling house, a hero parent, a temple, a workbench, a merchant's house, a harbour, the poorest street) and, coming of
