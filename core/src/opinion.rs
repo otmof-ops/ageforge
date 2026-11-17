@@ -49,7 +49,7 @@ impl State {
         t += ((cb.attr(0, y) - 6.0) * 1.5).round();
         if cb.has(gene("comely")) { t += 5.0; }
         t += if ca.people == cb.people { 5.0 } else { -10.0 };
-        t += if ca.religion == cb.religion { 10.0 } else { -15.0 };
+        t += if ca.religion == cb.religion { 10.0 } else if self.religions[ca.religion].has("holy war") { -30.0 } else { -15.0 };
         let kin = cb.id == ca.father || cb.id == ca.mother || ca.id == cb.father || ca.id == cb.mother
             || (ca.father != NONE && ca.father == cb.father) || (ca.mother != NONE && ca.mother == cb.mother);
         if kin { t += 20.0; }

@@ -360,7 +360,9 @@ impl State {
         let law = self.realms[k].law;
         let crown_law = self.realms[k].crown_law;
         let (hl, known) = (self.towns[cap].landmass, self.realms[k].known.clone());
+        let pf = self.realms[k].faith;
         let nk = &mut self.realms[nid];
+        nk.faith = pf;
         nk.home_land = hl;
         nk.known = known;
         nk.parent = k;
@@ -405,7 +407,7 @@ impl State {
             credit: None, defaults: 0, rate: 0.0, money: 0.0, trade_val: 0.0, trade_net: 0.0, partners: 0,
             trade_protectionist: false, last_forced: -99, last_default: -99, mint_skill: 0.0, sector_boost: [0.0; 7],
             econ_prev_gdp: None, goods: vec![], market: vec![], treasury: vec![], soulstones: [0; 5], dragonbone: 0, potions: 0.0,
-                arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false });
+                arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false, faith: people, persecuting: false });
         self.grow_tables();
         id
     }

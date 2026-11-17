@@ -106,6 +106,7 @@ impl State {
                 + (2.0 * (self.realms[k].taken as f64 - 2.0 * self.realms[k].lost as f64)).clamp(-20.0, 15.0)
                 + 5.0 * p("honest") - 5.0 * p("deceitful") - 5.0 * p("greedy");
             if rc.house != NONE && self.houses[rc.house].track == "ruler" { target += 3.0 * lvl; }
+            target += self.ruler_faith_legitimacy(k, r);
             let leg = rc.legitimacy.unwrap();
             let tyr = rc.tyranny * 0.985 + 0.5 * p("cruel") + 0.3 * p("paranoid") + 0.2 * p("wrathful") - 0.4 * p("kind") - 0.2 * p("calm");
             let (honest_or_diligent, cruel_paranoid) = (rc.has_trait("honest") || rc.has_trait("diligent"), rc.has_trait("cruel") && rc.has_trait("paranoid"));

@@ -199,7 +199,7 @@ impl State {
             }
         }
         let target = self.nearest_duchy(k, o)?;
-        if rk.people != ro.people && !rk.tolerant { return Some(("holy war".into(), Some(target), false, NONE)); }
+        if rk.faith != ro.faith && (!rk.tolerant || self.religions[rk.faith].has("holy war")) { return Some(("holy war".into(), Some(target), false, NONE)); }
         let lacks: Vec<usize> = ro.held.iter().copied().filter(|&x| RESOURCES[x].kind == "strategic" && !rk.held.contains(&x)).collect();
         if let Some(&want) = lacks.first() {
             let rd = self.alive_towns_of(o).into_iter().find(|&t| {
@@ -683,6 +683,7 @@ impl State {
         let place = self.towns[town].name.clone();
         let nid = self.new_realm(self.towns[town].culture, name, short, "duchy", "republic", [230, 230, 230], place);
         self.realms[nid].law = "elective";
+        self.realms[nid].faith = self.realms[k].faith;
         self.realms[nid].parent = k;
         self.realms[nid].home_land = self.towns[town].landmass;
         self.realms[nid].known = self.realms[k].known.clone();
@@ -772,11 +773,13 @@ impl State {
                 let contact = pf[i][j] > 0.0 || self.naval_contact(i, j);
                 if pf[i][j] > 0.0 { rel -= (0.15 * pf[i][j]).min(8.0) * (AGGRESSION[pi] + AGGRESSION[pj]) / 2.0; } else if contact { rel -= 1.0; }
                 if self.war[i][j] { rel -= 1.0; }
-                let rel = rel.clamp(-100.0, 100.0);
+                let mut rel = rel.clamp(-100.0, 100.0);
                 self.relation[i][j] = rel; self.relation[j][i] = rel;
                 if !self.war[i][j] {
                     let tribal = matches!(self.realms[i].rank, "tribe" | "chiefdom") || matches!(self.realms[j].rank, "tribe" | "chiefdom");
-                    let p = 0.15 * (AGGRESSION[pi] * self.realms[i].aggr).max(AGGRESSION[pj] * self.realms[j].aggr) * if tribal { 2.0 } else { 1.0 };
+                    let p = 0.15 * (AGGRESSION[pi] * self.realms[i].aggr).max(AGGRESSION[pj] * self.realms[j].aggr) * if tribal { 2.0 } else { 1.0 }
+                        * self.tenet_aggression(i).max(self.tenet_aggression(j));
+                    if self.realms[i].faith != self.realms[j].faith { rel -= 1.0; }
                     if contact && !allied && self.year >= self.truce[i][j] && rel < if tribal { -20.0 } else { -45.0 } && self.rng.random() < p
                         && ri != NONE && rj != NONE {
                         let (x, y) = (self.rng.random(), self.rng.random());

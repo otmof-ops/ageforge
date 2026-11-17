@@ -90,6 +90,8 @@ pub struct Character {
     pub marks: Vec<&'static str>,
     pub clan: usize,
     pub element: Option<&'static str>,
+    pub guilds: Vec<usize>,
+    pub guild_rank: Option<&'static str>,
     pub extra: [f64; 6],                  // legacy, class effects and perks on the six stats, refreshed yearly
     pub alive: bool,
     pub died: Option<i64>,
@@ -198,6 +200,7 @@ pub struct Town {
     pub sick_now: f64,
     pub crime: f64,
     pub duchy: Option<DKey>,
+    pub faith: Vec<(usize, f64)>,
     pub lord: usize,
     pub occupied_by: usize,
     pub trade: f64,
@@ -310,6 +313,8 @@ pub struct Realm {
     pub court: Option<Court>,
     pub court_mod: f64,
     pub bodyguard: bool,
+    pub faith: usize,
+    pub persecuting: bool,
 }
 
 pub struct Court {
@@ -452,6 +457,36 @@ pub struct Monster {
     pub landmass: i32,
     pub world: bool,
     pub slain_by: usize,
+}
+
+pub struct SocGuild {
+    pub id: usize,
+    pub name: String,
+    pub kind: &'static str,
+    pub people: usize,            // NONE for the Quiet Hand, which crosses every border
+    pub members: Vec<usize>,
+    pub master: usize,
+    pub gold: f64,
+    pub masters: Vec<(i64, usize)>,
+}
+
+pub struct Religion {
+    pub id: usize,
+    pub name: String,
+    pub deity: String,
+    pub tenets: Vec<&'static str>,
+    pub founder: usize,
+    pub founded: i64,
+    pub people: usize,
+    pub parent: usize,
+    pub holy_site: usize,
+    pub peak: f64,
+    pub followers: f64,
+    pub dead: bool,
+}
+
+impl Religion {
+    pub fn has(&self, t: &str) -> bool { self.tenets.contains(&t) }
 }
 
 pub struct Reign {

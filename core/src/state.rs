@@ -41,6 +41,8 @@ pub struct State {
     pub avenge_goal: (usize, usize, usize),
     pub items: Vec<crate::people::Item>,
     pub monsters: Vec<crate::people::Monster>,
+    pub guilds_soc: Vec<crate::people::SocGuild>,
+    pub religions: Vec<crate::people::Religion>,
     pub item_names: std::collections::HashSet<String>,
     pub greatest: Vec<(&'static str, usize)>,
     pub stats_defaults: Vec<(i64, usize)>,
@@ -155,7 +157,7 @@ impl State {
                                labour_value: 0.0, income: 0.0, housing: None, crowded: 0.0, stock: [0.0; 3],
                                cls: [(0.0, 0.0, 0.0); 3], poverty: 0.0, econ_mood: 0.0, bld: [0; 8], relief: 0,
                                coin: None, garrison: 0.0, trade_gain: 0.0, real_income: 0.0, bullion: 0.0, burghers: 0.08,
-                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0 });
+                               mood_p: None, mood_b: 10.0, rising: None, rallied: 0.0, immune: 0.0, sick_now: 0.0, crime: 0.1, duchy: None, faith: vec![(cu, 1.0)], lord: NONE, occupied_by: NONE, trade: 0.0, guard: 0.0 });
         id
     }
 
@@ -285,7 +287,7 @@ impl State {
             battle_arts: 0, lost_art: false, custom: false, concord: false, health: 5.0, epithet: None, duchies: vec![], op_bias: None, view_noise: None, profession: None, lordships: vec![], happy: 0.0, relations: vec![], rival_ruler: NONE, hooks: vec![], rival: NONE, stress: 0.0, loves: vec![], loved_by: vec![],
             vendettas: vec![], grief: 0.0, coping: vec![], pet: None, orientation: 0, affair: NONE, items: vec![], fame: vec![],
             bounty: 0.0, jailed_until: 0, education: None, ls_xp: 0.0, perk_list: vec![], practice: 0, tutored: 0.0, trained_in: None,
-            marks: vec![], clan: NONE, element: None, extra: [0.0; 6], alive: true, died: None, cause: None, home: NONE,
+            marks: vec![], clan: NONE, element: None, guilds: vec![], guild_rank: None, extra: [0.0; 6], alive: true, died: None, cause: None, home: NONE,
             gold: 0.0,
         };
         // a gift (arcana.maybe_gift)
@@ -535,7 +537,7 @@ impl State {
                 income: 0.0, real_gdp: 0.0, credit: None, defaults: 0, rate: 0.0, money: 0.0, trade_val: 0.0,
                 trade_net: 0.0, partners: 0, trade_protectionist: false, last_forced: -99, last_default: -99,
                 mint_skill: 0.0, sector_boost: [0.0; 7], econ_prev_gdp: None, goods: vec![], market: vec![], treasury: vec![], soulstones: [0; 5], dragonbone: 0, potions: 0.0,
-                arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false });
+                arms: 0.0, made: vec![], court: None, court_mod: 0.0, bodyguard: false, faith: f, persecuting: false });
             let pop = self.rng.integers(120, 260) as f64;
             let cap = self.add_town(pid, pos, pop, true);
             let place = self.towns[cap].name.clone();

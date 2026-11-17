@@ -22,14 +22,17 @@ impl State {
             let protect = self.realms[k].trade_protectionist;
             let tyranny = self.chars[r].tyranny;
             let at_war = self.war[k].iter().any(|&w| w);
+            let rel = self.chars[r].religion;
             for t in self.alive_towns_of(k) {
+                let faith_ok = self.faith_of_town(t) == rel;
+                let lord_good = self.towns[t].lord != NONE && self.chars[self.towns[t].lord].legitimacy.unwrap_or(0.0) >= 60.0;
                 let guild = self.cultures[self.towns[t].culture].innovations.contains("Guild Charters");
                 let s = &mut self.towns[t];
                 let mp = s.mood_p.unwrap_or(10.0);
                 // (a town's faith and its lord join with slices 4 and 5: until then the ruler's faith is the town's)
                 let occupied = s.occupied_by != NONE;
                 let p = 12.0 - 120.0 * s.famine - if occupied { 20.0 } else { 0.0 } - 60.0 * s.sick_now - 60.0 * (tax - 0.25) - 6.0 * at_war as u8 as f64
-                    - tyranny / 3.0 + if relief { 15.0 } else { 0.0 } + s.econ_mood
+                    - tyranny / 3.0 - if faith_ok { 0.0 } else { 10.0 } + if lord_good { 5.0 } else { 0.0 } + if relief { 15.0 } else { 0.0 } + s.econ_mood
                     - if s.culture != people { 12.0 } else { 0.0 };
                 let b = 10.0 + 3.0 * s.trade.min(10.0) - 40.0 * s.crime - 40.0 * (tax - 0.25) - if protect { 15.0 } else { 0.0 };
                 let mp = mp + 0.3 * (p - mp);

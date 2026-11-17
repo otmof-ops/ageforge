@@ -205,6 +205,13 @@ out.append("pub const LIFESTYLES: [[(&str, &str, [&str; 3]); 3]; 5] = [%s];" % "
 out.append("pub const PERK_VALUE: [(&str, f64); %d] = [%s];" % (len(_ct.PERK_VALUE), ", ".join(f"({rs_str(k)}, {f(v)})" for k, v in _ct.PERK_VALUE.items())))
 strs("HERO_MARK", [data2.HERO_MARK]); strs("SEER_GIFT", [data2.SEER_GIFT])
 
+# ---- society
+out.append("pub const GUILD_KINDS: [(&str, &str); %d] = [%s];" % (len(data2.GUILD_KINDS), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data2.GUILD_KINDS.items())))
+strs("GUILD_RANKS", data2.GUILD_RANKS); strs("ASSASSINS", [data2.ASSASSINS])
+out.append("pub const BASE_FAITHS: [(&str, &str); 4] = [%s];" % ", ".join(f"({rs_str(a)}, {rs_str(b)})" for a, b in data2.BASE_FAITHS))
+out.append("pub const TENETS: [(&str, &str); %d] = [%s];" % (len(data2.TENETS), ", ".join(f"({rs_str(k)}, {rs_str(v)})" for k, v in data2.TENETS.items())))
+strs("FAITH_A", data2.FAITH_A); strs("DEITY_A", data2.DEITY_A); strs("DEITY_B", data2.DEITY_B)
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "tables.rs"), "w") as fh:
     fh.write("\n".join(out) + "\n")
 print(f"wrote src/tables.rs ({len(out)} lines)")

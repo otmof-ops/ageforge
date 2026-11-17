@@ -21,6 +21,7 @@ mod opinion;
 mod people;
 mod populace;
 mod power;
+mod society;
 mod state;
 mod stewardship;
 mod titles;
