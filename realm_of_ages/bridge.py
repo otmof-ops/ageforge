@@ -135,7 +135,13 @@ class Shade:
         if name.startswith("__"):
             raise AttributeError(name)
         realm = self.__dict__["_realm"]
-        full = MChar(realm._world.character_full(self.__dict__["id"]), realm)
+        session = getattr(realm, "_session", None)
+        if session is not None:
+            with session.lock:                                   # wait out a year being run, never read mid-step
+                rec = realm._world.character_full(self.__dict__["id"])
+        else:
+            rec = realm._world.character_full(self.__dict__["id"])
+        full = MChar(rec, realm)
         self.__dict__.update(full.__dict__)
         self.__class__ = MChar
         return getattr(self, name)
