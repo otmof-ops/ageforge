@@ -5,13 +5,12 @@ and details logs (appended as the years pass), and, after every advance, a fresh
 can be closed and opened again later; ending it writes the last books and marks it finished."""
 import json
 import os
-import pickle
 import re
 import time
 
 import numpy as np
 
-from . import characters
+from .bridge import Mirror, to_log
 from .data import PEOPLES
 
 PRESETS = [1, 5, 10, 50, 100, 200, 300, 500, 1000]
@@ -36,27 +35,53 @@ def list_worlds():
     return out
 
 
+def _world(seed, width, height):
+    """A Rust world for a seed: the generator starts where NumPy's default_rng(seed) starts."""
+    from . import _core
+    st = np.random.default_rng(seed).bit_generator.state["state"]
+    return _core.World(width, height, st["state"], st["inc"])
+
+
+class Progress:
+    """What the progress callback is handed each year: the year, and nothing to change."""
+
+    def __init__(self, year):
+        self.year = year
+
+
 class Session:
-    def __init__(self, path, realm, guild_rows, meta):
-        self.path, self.realm, self.guild_rows, self.meta = path, realm, guild_rows, meta
+    """A world in play. The world itself lives in Rust; this keeps its folder, its chronicle files, the tracked
+    characters' journals and the record of everything done to it. Saving writes that record: the seed, every advance
+    and every act of the gods, in order. A Rust world is deterministic, so loading replays the record."""
+
+    def __init__(self, path, world, meta):
+        self.path, self.world, self.meta = path, world, meta
         self.stop = False
-        characters.CTX["realm"] = realm
+        self.event_log = []
+        self.journals = {int(k): [tuple(x) for x in v] for k, v in meta.get("journals", {}).items()}
+        self.tracked = set(meta.get("tracked", []))
+        self.ev_index = 0
+        self._mirror = None
+        self.guild_rows = []
 
     # ---------------- lifecycle
     @classmethod
     def new(cls, name, seed=1, width=480, height=270):
-        from .world import Realm
         path = os.path.join(ROOT, slug(name))
         if os.path.exists(path):
             n = 2
             while os.path.exists(f"{path}-{n}"):
                 n += 1
             path = f"{path}-{n}"
+        return cls.create(path, name, seed, width, height)
+
+    @classmethod
+    def create(cls, path, name, seed=1, width=480, height=270):
+        """A new world in a folder of your choosing."""
         os.makedirs(os.path.join(path, "maps"), exist_ok=True)
-        realm = Realm(width, height, seed)
         meta = {"name": name, "seed": seed, "width": width, "height": height, "created": time.strftime("%Y-%m-%d %H:%M"),
-                "year": 0, "ended": False, "advances": []}
-        s = cls(path, realm, [], meta)
+                "year": 0, "ended": False, "advances": [], "ops": [], "engine": "rust", "tracked": [], "journals": {}}
+        s = cls(path, _world(seed, width, height), meta)
         with open(os.path.join(path, "chronicle.md"), "w") as fh:
             fh.write(f"# The Chronicle of {name} (seed {seed})\n\n")
         open(os.path.join(path, "details.md"), "w").close()
@@ -66,98 +91,142 @@ class Session:
 
     @classmethod
     def load(cls, path):
-        with open(os.path.join(path, "world.pkl"), "rb") as fh:
-            realm, guild_rows = pickle.load(fh)
         with open(os.path.join(path, "meta.json")) as fh:
             meta = json.load(fh)
-        return cls(path, realm, guild_rows, meta)
+        if meta.get("engine") != "rust":
+            raise RuntimeError("it was grown by the old Python engine, which the game no longer runs; its books and maps are still in its folder")
+        s = cls(path, _world(meta["seed"], meta["width"], meta["height"]), meta)
+        for op in meta.get("ops", []):                                  # the world's history, replayed exactly
+            if op[0] == "step":
+                s.world.step(int(op[1]))
+            else:
+                s.world.god(op[1], op[2])
+        events, s.ev_index = s.world.events_from(0)
+        s.event_log = [to_log(y, m, t) for y, m, t in events]
+        return s
 
     def save(self):
-        tmp = os.path.join(self.path, "world.pkl.tmp")
-        with open(tmp, "wb") as fh:
-            pickle.dump((self.realm, self.guild_rows), fh)
-        os.replace(tmp, os.path.join(self.path, "world.pkl"))
-        self.meta["year"] = self.realm.year
-        with open(os.path.join(self.path, "meta.json"), "w") as fh:
+        self.meta["year"] = self.world.year
+        self.meta["tracked"] = sorted(self.tracked)
+        self.meta["journals"] = {str(k): v[-2000:] for k, v in self.journals.items()}
+        tmp = os.path.join(self.path, "meta.json.tmp")
+        with open(tmp, "w") as fh:
             json.dump(self.meta, fh, indent=1)
+        os.replace(tmp, os.path.join(self.path, "meta.json"))
+
+    @property
+    def realm(self):
+        """The world as the screens read it, rebuilt after any change."""
+        if self._mirror is None or self._mirror.year != self.world.year or self._dirty:
+            self._mirror = Mirror(self.world, self.tracked, self.journals, self.event_log, self.meta["seed"])
+            self._mirror._session = self
+            self._dirty = False
+        return self._mirror
+
+    _dirty = True
 
     def flush(self):
-        r = self.realm
-        if not r.chron:
+        """New chronicle entries into the files, the event log and the tracked journals."""
+        events, self.ev_index = self.world.events_from(self.ev_index)
+        if not events:
             return
+        names = {cid: self.world.character(cid)["name"] for cid in self.tracked}
         with open(os.path.join(self.path, "chronicle.md"), "a") as cf, \
                 open(os.path.join(self.path, "details.md"), "a") as df:
-            for y, text, minor in r.chron:
+            for y, minor, text in events:
                 (df if minor else cf).write(f"- **Year {y}.** {text}\n")
-        r.chron.clear()
+                row = to_log(y, minor, text)
+                self.event_log.append(row)
+                for cid, nm in names.items():
+                    if nm and nm in text:
+                        self.journals.setdefault(cid, []).append((y, row[1], text))
+        self._dirty = True
+
+    def record(self, op):
+        ops = self.meta.setdefault("ops", [])
+        if op[0] == "step" and ops and ops[-1][0] == "step":
+            ops[-1] = ["step", ops[-1][1] + op[1]]
+        else:
+            ops.append(list(op))
 
     # ---------------- the passing of years
     def advance(self, years, progress=None):
-        """Run the world forward; progress(done, total, realm) is called every year. Stops early if self.stop."""
-        r = self.realm
+        """Run the world forward; progress(done, total, view) is called every year. Stops early if self.stop."""
         if self.meta.get("ended"):
             raise RuntimeError("this world has ended")
         self.stop = False
-        start, t0 = r.year, time.time()
+        start, t0 = self.world.year, time.time()
         for n in range(int(years)):
             if self.stop:
                 break
-            r.step()
+            self.world.step(1)
+            self.record(("step", 1))
             self.flush()
-            if r.year % 10 == 0:
+            y = self.world.year
+            if y % 10 == 0:
                 self.decade()
-            if r.year % 100 == 0:
+            if y % 100 == 0:
                 from .output import render
-                render(r, os.path.join(self.path, "maps", f"year-{r.year:05d}.png"))
+                render(self.realm, os.path.join(self.path, "maps", f"year-{y:05d}.png"))
             if progress is not None:
-                progress(n + 1, int(years), r)
-        self.meta["advances"].append({"from": start, "to": r.year, "seconds": round(time.time() - t0, 1)})
+                progress(n + 1, int(years), Progress(y))
+        self.meta["advances"].append({"from": start, "to": self.world.year, "seconds": round(time.time() - t0, 1)})
         self.save()
         self.write_books()
-        return r.year - start
+        return self.world.year - start
 
     def decade(self):
-        r = self.realm
-        for f in range(4):
-            g = r.guilds[f]
-            self.guild_rows.append({"year": r.year, "faction": f, "hunts": g.w["hunts"], "hunt_wins": g.w["hunt_wins"],
-                                    "_ren": list(g.w["renown_at_death"]), "_lev": list(g.w["level_at_death"]),
-                                    "_acts": g.w["acts"].copy()})
-            g.reset_window()
-        r.win = r.fresh_window()
+        """Every ten years: the hero guilds' tally for the decade, and where each tracked life stands."""
+        y = self.world.year
+        snap = self.world.hero_guilds()
+        prev = getattr(self, "_guild_prev", None) or [(0, 0, [0] * 9)] * len(snap)
+        for f, ((hunts, wins, acts), (ph, pw, pa)) in enumerate(zip(snap, prev)):
+            self.guild_rows.append({"year": y, "faction": f, "hunts": hunts - ph, "hunt_wins": wins - pw, "_ren": [], "_lev": [],
+                                    "_acts": np.array(acts) - np.array(pa)})
+        self._guild_prev = snap
+        for cid in self.tracked:
+            c = self.world.character(cid)
+            if not c["alive"]:
+                continue
+            self.journals.setdefault(cid, []).append(
+                (y, "lives", f"Aged {y - c['born']}, level {c['level']}, renown {c['renown']:,.0f}."))
+
+    def god(self, act, args):
+        """An act of the gods, done to the world and written into its record."""
+        out = self.world.god(act, args)
+        self.record(("god", act, args))
+        self.flush()
+        self._dirty = True
+        return out
 
     def write_books(self):
         from . import output
         r, p = self.realm, self.path
         output.render(r, os.path.join(p, "maps", "latest.png"))
+        for fn, name in ((output.write_dynasties, "dynasties.md"), (output.write_legends, "legends.md"),
+                         (output.write_magic, "magic.md"), (output.write_bestiary, "bestiary.md"),
+                         (output.write_realms, "realms.md"), (output.write_calibration, "calibration.md")):
+            fn(r, os.path.join(p, name))
         output.write_summary(r, os.path.join(p, "summary.md"), self.guild_rows)
-        output.write_dynasties(r, os.path.join(p, "dynasties.md"))
-        output.write_legends(r, os.path.join(p, "legends.md"))
-        output.write_magic(r, os.path.join(p, "magic.md"))
-        output.write_bestiary(r, os.path.join(p, "bestiary.md"))
         output.write_books(r, p)
-        output.write_realms(r, os.path.join(p, "realms.md"))
-        output.write_calibration(r, os.path.join(p, "calibration.md"))
         self.write_journals()
 
     def write_journals(self):
-        r = self.realm
-        tracked = [r.chars[i] for i in getattr(r, "tracked", ()) if i in r.chars]
-        if not tracked:
+        if not self.tracked:
             return
         lines = ["# Tracked characters", ""]
-        for c in tracked:
+        for cid in sorted(self.tracked):
+            c = self.realm.chars[cid]
             lines += [f"## {c.full_name()}" + ("" if c.alive else f" (died {c.died})"), ""]
-            lines += [f"- **{y}** [{cat}] {t}" for y, cat, t in getattr(c, "journal", [])]
+            lines += [f"- **{y}** [{cat}] {t}" for y, cat, t in self.journals.get(cid, [])]
             lines.append("")
         with open(os.path.join(self.path, "tracked.md"), "w") as fh:
             fh.write("\n".join(lines) + "\n")
 
     def end(self):
         self.meta["ended"] = True
-        self.meta["ended_at"] = self.realm.year
-        self.realm.say(f"**The end of the world.** The chronicle closes in year {self.realm.year}.", cat="god")
-        self.flush()
+        self.meta["ended_at"] = self.world.year
+        self.god("god_note", {"text": f"**The end of the world.** The chronicle closes in year {self.world.year}."})
         self.save()
         self.write_books()
 
@@ -165,34 +234,29 @@ class Session:
     def overview(self):
         r = self.realm
         towns = r.alive_towns()
-        realms = [k for k in r.kingdoms if not r.extinct[k.id]]
-        return {"year": r.year, "pop": sum(t.pop for t in towns), "towns": len(towns), "realms": len(realms),
-                "wars": int(r.war.sum() // 2), "people": len(r.living), "heroes": len(r.hero_ids),
-                "monsters": sum(1 for m in r.monsters if m.alive),
+        return {"year": r.year, "pop": sum(t.pop for t in towns), "towns": len(towns),
+                "realms": sum(1 for k in r.kingdoms if not k.extinct), "wars": int(r.war.sum() // 2),
+                "people": len(r.living), "heroes": len(r.hero_ids), "monsters": sum(1 for m in r.monsters if m.alive),
                 "calamities": sum(1 for m in r.monsters if m.alive and m.kind == "calamity"),
-                "tier": r.world_tier, "tracked": len(getattr(r, "tracked", ()))}
+                "tier": r.world_tier, "tracked": len(self.tracked)}
 
     def realm_rows(self):
         r = self.realm
         rows = []
-        for k in sorted((k for k in r.kingdoms if not r.extinct[k.id]), key=lambda k: -len(r.alive_towns(k.id))):
+        for k in sorted((k for k in r.kingdoms if not k.extinct), key=lambda k: -len(r.alive_towns(k.id))):
             towns = r.alive_towns(k.id)
             ru = r.chars.get(k.ruler)
             at_war = [r.kingdoms[o].short for o in range(r.npol) if r.war[k.id, o]]
-            rows.append((k.id, k.name, PEOPLES[k.people], k.rank, getattr(k, "gov", "-"),
-                         ru.full_name() if ru else "-", len(towns), int(sum(t.pop for t in towns)),
-                         int(getattr(k, "gold", 0)), int(getattr(k, "army_power", 0)), ", ".join(at_war[:3]) or "-"))
+            rows.append((k.id, k.name, PEOPLES[k.people], k.rank, k.gov, ru.full_name() if ru else "-", len(towns),
+                         int(sum(t.pop for t in towns)), int(k.gold), int(k.army_power), ", ".join(at_war[:3]) or "-"))
         return rows
 
     def find_characters(self, query, limit=60):
         r = self.realm
         q = query.lower().strip()
-        out = []
         pool = [r.chars[i] for i in r.living] if not q.startswith("dead:") else list(r.chars.values())
         q = q.replace("dead:", "")
-        for c in pool:
-            if not q or q in c.full_name().lower() or (q.isdigit() and int(q) == c.id):
-                out.append(c)
-        out.sort(key=lambda c: -(c.renown + (5000 if getattr(c, "tracked", False) else 0) +
+        out = [c for c in pool if not q or q in c.full_name().lower() or (q.isdigit() and int(q) == c.id)]
+        out.sort(key=lambda c: -(c.renown + (5000 if c.id in self.tracked else 0) +
                                  (3000 if c.ruled and c.ruled[2] is None else 0)))
         return out[:limit]

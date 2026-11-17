@@ -10,6 +10,9 @@ pip install -r requirements.txt
 bin/realm-tui
 ```
 
+The world itself runs in Rust; `bin/realm-tui` builds it the first time (`bin/build-core`, which needs a Rust
+toolchain from [rustup](https://rustup.rs)). Python draws the interface, the maps and the books.
+
 ---
 
 ## What lives in a world
@@ -74,8 +77,9 @@ credit, poverty, classes and assets, scrolls, monster stores, the bound dead, th
 peace, change governments, raise eras, break realms apart, curse houses, smite cities. Create characters to your own
 design (every stat, trait, bloodline, class and level), track them, and change anything about anyone.
 
-A world never ends until you end it. Each lives in `worlds/<name>/` with its saved state, the chronicle, the books,
-maps, and a journal for every tracked character.
+A world never ends until you end it. Each lives in `worlds/<name>/` with the chronicle, the books, maps, a journal
+for every tracked character, and `meta.json`, which records the seed, every advance and every act of the gods. A
+world is deterministic, so loading one replays that record and arrives at exactly the same world.
 
 ## Running without the interface
 
@@ -83,8 +87,9 @@ maps, and a journal for every tracked character.
 python3 -m realm_of_ages --years 1000 --seed 7 --dir my-run
 ```
 
-Options: `--years`, `--seed`, `--width`/`--height` (default 480 x 270), `--dir`, `--fresh`, `--map-every`. A run
-writes the chronicle, the books, maps, and `calibration.md`.
+Options: `--years`, `--seed`, `--width`/`--height` (default 480 x 270), `--dir`, `--fresh`. A run writes the
+chronicle, the books, a map every century, `log.csv` every decade and `calibration.md`, and picks up where it left
+off when run again on the same `--dir`.
 
 ## Measured against history
 
@@ -94,11 +99,16 @@ forced loans, the share of people on the land, poverty, the classes, and how wea
 
 ## Layout
 
-`realm_of_ages/` holds the engine: `world.py` runs the year; `characters`, `dynasty`, `lineage`, `court`,
-`opinion`, `heart` and `youth` are the people; `titles`, `governance`, `civics`, `statecraft`, `warfare` and
-`seafaring` are the politics and war; `markets`, `stewardship`, `economy`, `climate`, `populace` and `resources`
-are the economy and the land; `arcana`, `skills`, `crafts`, `heroes`, `shinobi`, `bending`, `beasts`, `monsters`,
-`ecology`, `dungeons` and `legends` are the fantastic; `session`, `godmode`, `events` and `tui` are the game.
+`core/` is the world, in Rust: `state.rs` holds it and founds it, `world.rs` runs the year and is what Python sees,
+and each system has its module (`climate`, `economy`, `stewardship`, `populace`, `dynasty`, `titles`, `civics`,
+`governance`, `war`, `sea`, `court`, `heart`, `opinion`, `crafts`, `society`, `power`, `monsters`, `ecology`,
+`heroes`, `wardens`, `legends`, `beasts`, `bending`, `shinobi`). `export.rs` hands Python a snapshot and `godmode.rs`
+takes the gods' acts. `core/gen_tables.py` generates `tables.rs` from the Python tables, so both read one source.
+
+`realm_of_ages/` is the game: `tui` the interface, `session` a world in play, `bridge` the snapshot as the screens
+read it, `godmode` the acts, `output` the books and maps, `events` the chronicle's kinds. The Python simulation
+modules (`world.py` and the systems it runs) are the reference engine the Rust world was ported from and checked
+against; `core/PORT.md` has the method, the numbers and the bugs the port found.
 
 ## License
 

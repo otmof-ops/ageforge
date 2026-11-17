@@ -440,6 +440,8 @@ def dynasty_year(realm):
         r = realm.chars.get(k.ruler)
         if r is not None and not r.alive:
             succeed(realm, k, r.cause)
+            if realm.extinct[f] or k.ruler is None:
+                continue                                                 # its crown passed to another realm
         marriages(realm, k)
         council(realm, k)
         princes_errant(realm, k)
