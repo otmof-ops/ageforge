@@ -1,5 +1,10 @@
 #!/bin/sh
-# Ageforge: open the Realm of Ages game. The first run builds the Rust core the world runs on.
+# Ageforge: open the game. The first run (and any run after the sources change) builds it; needs Rust (rustup.rs).
 here="$(cd "$(dirname "$0")/.." && pwd)"
-ls "$here"/realm_of_ages/_core*.so >/dev/null 2>&1 || "$here/bin/build-core" || exit 1
-cd "$here" && exec python3 -m realm_of_ages.tui "$@"
+bin="$here/target/release/ageforge"
+if [ ! -x "$bin" ] || [ -n "$(find "$here/core/src" "$here/game/src" -newer "$bin" -name '*.rs' 2>/dev/null | head -1)" ]; then
+    PATH="$HOME/.cargo/bin:$PATH"
+    echo "Building Ageforge..."
+    (cd "$here" && cargo build --release -p ageforge) || exit 1
+fi
+AGEFORGE_WORLDS="${AGEFORGE_WORLDS:-$here/worlds}" exec "$bin" "$@"

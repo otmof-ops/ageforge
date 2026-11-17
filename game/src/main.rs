@@ -1,43 +1,64 @@
-fn fnv(events: &[(i64, bool, String)]) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325;
-    for (y, m, t) in events {
-        for b in format!("{y}|{}|{t}\n", if *m { "True" } else { "False" }).bytes() { h ^= b as u64; h = h.wrapping_mul(0x100000001b3); }
+//! Ageforge: the Realm of Ages, played in the terminal.
+//!
+//!     ageforge                                   the game
+//!     ageforge run --years 1000 --seed 7 --dir D  run without the interface (resumes the world in D if there is one)
+
+mod books;
+mod events;
+mod forms;
+mod god;
+mod map;
+mod session;
+mod sheet;
+mod ui;
+
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+
+fn arg(args: &[String], name: &str) -> Option<String> { args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned()) }
+
+fn main() -> std::io::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    match args.get(1).map(|s| s.as_str()) {
+        Some("run") => batch(&args),
+        Some("--help") | Some("-h") => { println!("ageforge                  play\nageforge run --years N --seed S --dir D [--fresh] [--width W --height H]"); Ok(()) }
+        _ => ui::run(),
     }
-    h
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| s.as_str()) == Some("lives") {
-        let (s, i) = world::engine::seed_state(4);
-        let mut st = world::state::State::new_world(480, 270, s, i);
-        st.run_years(60);
-        let y = st.year;
-        let mut picks: Vec<usize> = st.living.iter().copied().filter(|&c| st.chars[c].alive && st.chars[c].age(y) <= 3 && st.chars[c].house != usize::MAX).take(3).collect();
-        picks.extend(st.living.iter().copied().filter(|&c| st.chars[c].alive && st.chars[c].age(y) >= 20 && st.chars[c].age(y) <= 30).take(2));
-        for &c in &picks {
-            let mut a = serde_json::Map::new();
-            a.insert("c".into(), c.into()); a.insert("on".into(), true.into());
-            st.god_act("track", &a).unwrap();
+/// Years without the interface: the chronicle, the books, a map each century and a decade log.
+fn batch(args: &[String]) -> std::io::Result<()> {
+    let years: i64 = arg(args, "--years").and_then(|v| v.parse().ok()).unwrap_or(1000);
+    let seed: u64 = arg(args, "--seed").and_then(|v| v.parse().ok()).unwrap_or(1);
+    let width: usize = arg(args, "--width").and_then(|v| v.parse().ok()).unwrap_or(480);
+    let height: usize = arg(args, "--height").and_then(|v| v.parse().ok()).unwrap_or(270);
+    let dir = PathBuf::from(arg(args, "--dir").unwrap_or_else(|| "realm_run".into()));
+    let fresh = args.iter().any(|a| a == "--fresh");
+    let s = if dir.join("meta.json").exists() && !fresh {
+        let s = session::Session::load(&dir).map_err(std::io::Error::other)?;
+        println!("resumed at year {}", s.year_now.load(Ordering::SeqCst));
+        s
+    } else {
+        let _ = std::fs::remove_dir_all(&dir);
+        let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "world".into());
+        session::Session::create(&dir, &name, seed, width, height)?
+    };
+    let t0 = std::time::Instant::now();
+    s.advance(years);
+    let mut last = -1;
+    while s.running.load(Ordering::SeqCst) {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let y = s.year_now.load(Ordering::SeqCst);
+        if y / 100 != last / 100 && y % 100 < 5 && y != last {
+            if let Ok(st) = s.world.try_lock() {
+                let towns = st.towns.iter().filter(|t| t.alive).count();
+                let pop: f64 = st.towns.iter().filter(|t| t.alive).map(|t| t.pop).sum();
+                let realms = st.realms.iter().filter(|k| !k.extinct).count();
+                println!("year {:5}  pop={pop:.0} in {towns} towns  realms={realms}  wars={}  ({:.0} yr/s)", st.year, st.wars.len(), st.year as f64 / t0.elapsed().as_secs_f64().max(1e-9));
+                last = y;
+            }
         }
-        st.run_years(80);
-        for &c in &picks {
-            let ch = &st.chars[c];
-            println!("\n== {} (origin {}, ambition {}{})", ch.name, ch.origin, ch.ambition, if ch.ambition_met.is_some() { ", fulfilled" } else { "" });
-            for (yy, cat, t) in &ch.journal { println!("  {yy} [{cat}] {t}"); }
-        }
-        let mut o = std::collections::BTreeMap::new(); let mut a = std::collections::BTreeMap::new(); let (mut met, mut n) = (0, 0);
-        for &c in &st.living { let ch = &st.chars[c]; if !ch.alive { continue; } *o.entry(ch.origin).or_insert(0) += 1; if !ch.ambition.is_empty() { n += 1; *a.entry(ch.ambition).or_insert(0) += 1; if ch.ambition_met.is_some() { met += 1; } } }
-        println!("\norigins {o:?}\nambitions {a:?}\nfulfilled {met} of {n}");
-        let minors_bearing = st.living.iter().filter(|&&c| st.chars[c].alive && !st.chars[c].adult(st.year) && st.chars[c].items.iter().any(|&i| st.items[i].rarity >= 3)).count();
-        println!("children carrying relics: {minors_bearing}; items held in trust: {}", st.items.iter().filter(|i| i.held_for != usize::MAX).count());
     }
-    if args.get(1).map(|s| s.as_str()) == Some("check") {
-        let seed: u64 = args[2].parse().unwrap();
-        let years: i64 = args[3].parse().unwrap();
-        let (s, i) = world::engine::seed_state(seed);
-        let mut st = world::state::State::new_world(480, 270, s, i);
-        st.run_years(years);
-        println!("chars={} events={} fnv={:016x}", st.chars.len(), st.log.len(), fnv(&st.log));
-    }
+    println!("stopped at year {}; outputs in {}", s.year_now.load(Ordering::SeqCst), dir.display());
+    Ok(())
 }

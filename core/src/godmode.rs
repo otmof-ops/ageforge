@@ -90,8 +90,18 @@ impl State {
                 let home: Option<usize> = opt(a, "home")?;
                 self.chars[c].home = home.unwrap_or_else(|| self.alive_towns_of(realm).into_iter().max_by(|&x, &z| self.towns[x].pop.partial_cmp(&self.towns[z].pop).unwrap()).unwrap_or(NONE));
                 if opt::<bool>(a, "hero")?.unwrap_or(false) { self.start_hero(c, None); }
+                // where they come from and what they want, as the player wrote them (lives.rs)
+                if let Some(o) = opt::<String>(a, "origin")? { if let Some(k) = crate::lives::ORIGINS.iter().find(|x| **x == o) { self.chars[c].origin = k; } }
+                if self.chars[c].origin.is_empty() { self.chars[c].origin = "wanderer"; }
+                let home_name = if self.chars[c].home != NONE { self.towns[self.chars[c].home].name.clone() } else { self.realms[realm].name.clone() };
+                self.chars[c].origin_story = match opt::<String>(a, "origin_story")? {
+                    Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+                    _ => format!("Set down in {home_name} in year {y} by the gods' hand, aged {age}; {}.", crate::lives::origin_words(self.chars[c].origin)),
+                };
+                if let Some(am) = opt::<String>(a, "ambition")? { if let Some(x) = crate::lives::AMBITIONS.iter().find(|x| x.0 == am) { self.chars[c].ambition = x.0; } }
                 let t = format!("{}, a {} {} of {age}, is set down in {} by the gods' hand.", self.full(c), ADJ[people], if female { "woman" } else { "man" }, self.realms[realm].name);
                 self.god_say(t);
+                if opt::<bool>(a, "track")?.unwrap_or(false) { self.begin_life_log(c); }
                 c.to_string()
             }
             "set_stat" => {

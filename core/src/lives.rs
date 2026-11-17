@@ -21,6 +21,16 @@ pub const AMBITIONS: [(&str, &str); 8] = [
     ("home", "a quiet life, home and hearth"), ("vengeance", "vengeance on the one who took their parent"),
 ];
 
+/// What each origin means, for menus and for stories.
+pub fn origin_words(o: &str) -> &'static str {
+    match o {
+        "hearth" => "raised at an ordinary hearth", "hunger" => "born in a hungry year", "plague" => "born while sickness walked the streets",
+        "war" => "born into a war", "highborn" => "born into a ruling house", "heroblood" => "a hero's child", "temple" => "raised in a temple",
+        "forge" => "raised at a craftsman's workbench", "trade" => "raised in a merchant's house", "sea" => "raised within sound of the harbour",
+        "poor" => "raised among the poorest", "founder" => "of the first tribes", _ => "come from beyond the settled lands",
+    }
+}
+
 pub const ORIGINS: [&str; 13] = ["hearth", "hunger", "plague", "war", "highborn", "heroblood", "temple", "forge", "trade", "sea", "poor", "founder", "wanderer"];
 
 const LIFE_CAP: usize = 600;
