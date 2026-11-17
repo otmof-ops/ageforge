@@ -357,7 +357,7 @@ impl State {
 
     /// A slain monster: purses, parts and soulstones, its title to its eldest child, its relics to the slayer.
     pub fn on_monster_slain(&mut self, m: usize, slayer: usize) {
-        if slayer != NONE { self.monsters[m].slain_by = slayer; }
+        if slayer != NONE { self.monsters[m].slain_by = slayer; let mn = self.monsters[m].name.clone(); self.life(slayer, "monsters", format!("Slays {mn}.")); }
         self.slain += 1;
         let mut people = if slayer != NONE { self.chars[slayer].realm } else { NONE };
         if people == NONE {

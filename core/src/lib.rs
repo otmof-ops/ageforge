@@ -44,6 +44,7 @@ pub mod war;
 pub mod rng;
 pub mod tables;
 pub mod works;
+pub mod lives;
 #[cfg(feature = "python")]
 pub mod world;
 pub mod engine;

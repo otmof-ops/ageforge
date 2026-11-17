@@ -118,6 +118,7 @@ impl State {
     // ------------------------------------------------------------ heroes
     pub fn start_hero(&mut self, c: usize, why: Option<String>) {
         self.chars[c].hero = true;
+        self.life(c, "heroes", "Takes up the hero's calling.".into());
         if self.chars[c].home == NONE || !self.towns[self.chars[c].home].alive {
             let cap = self.capital_of(self.chars[c].realm);
             self.chars[c].home = cap;
@@ -155,7 +156,7 @@ impl State {
                 && c.father != NONE && (self.chars[c.father].hero || self.chars[c.father].renown > 100.0)).map(|c| c.id).collect();
             for c in heirs {
                 if n >= cap { break; }
-                if self.rng.random() < 0.15 {
+                if self.rng.random() < 0.15 * self.ambition_bias(c, "hero") {
                     let why = format!("takes up the calling of {}", self.chars[self.chars[c].father].name);
                     self.start_hero(c, Some(why));
                     n += 1;

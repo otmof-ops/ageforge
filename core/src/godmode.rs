@@ -277,6 +277,11 @@ impl State {
                 self.god_say(t)
             }
             "god_note" => { let t: String = get(a, "text")?; self.god_say(t) }
+            "track" => {
+                let (c, on): (usize, bool) = (get(a, "c")?, get(a, "on")?);
+                if on { self.begin_life_log(c); } else { self.chars[c].tracked = false; }
+                format!("{} {} tracked.", self.full(c), if on { "is now" } else { "is no longer" })
+            }
             _ => return Err(format!("unknown act {act}")),
         })
     }

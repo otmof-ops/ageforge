@@ -283,7 +283,7 @@ impl State {
         for i in self.living.clone() {
             let c = &self.chars[i];
             if c.alive && c.adult(y) && (c.has_trait("zealous") || c.profession == Some("priest")) && self.skill_val(c, skill_ix("Speech")) >= 45.0
-                && c.attr(5, y) >= 7.0 && self.rng.random() < 0.004 { self.proclaim(i); }
+                && c.attr(5, y) >= 7.0 && self.rng.random() < 0.004 * self.ambition_bias(i, "faith") { self.proclaim(i); }
         }
         let towns: Vec<usize> = (0..self.towns.len()).filter(|&t| self.towns[t].alive).collect();
         let priests: Vec<usize> = self.living.iter().map(|&i| &self.chars[i]).filter(|c| c.alive && c.profession == Some("priest")).map(|c| c.id).collect();

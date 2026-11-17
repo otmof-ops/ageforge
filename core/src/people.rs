@@ -125,6 +125,17 @@ pub struct Character {
     pub cause: Option<String>,
     pub home: usize,
     pub gold: f64,
+    // lives.rs: where they come from, what they want, their story
+    pub origin: &'static str,
+    pub origin_story: String,
+    pub birthplace: usize,
+    pub ambition: &'static str,
+    pub ambition_met: Option<i64>,
+    pub orphan: bool,
+    pub orphaned_by: usize,
+    pub tracked: bool,
+    pub journal: Vec<(i64, &'static str, String)>,
+    pub in_trust: Vec<usize>,
 }
 
 impl Character {
@@ -481,12 +492,14 @@ pub struct Item {
     pub value: f64,
     pub mat_index: usize,
     pub bearers: Vec<usize>,
+    pub held_for: usize, // a child heir it is kept for (lives.rs)
+    pub keeper: usize,
 }
 
 impl Item {
     pub fn new(name: String, rarity: usize, year: i64, origin: String) -> Self {
         Item { name, rarity, year, origin, special: None, note: String::new(), bonus: RARITY_BONUS[rarity.min(6)], desc: None,
-               enchants: vec![], kind: "relic", maker: usize::MAX, enchanter: usize::MAX, value: 0.0, mat_index: 0, bearers: vec![] }
+               enchants: vec![], kind: "relic", maker: usize::MAX, enchanter: usize::MAX, value: 0.0, mat_index: 0, bearers: vec![], held_for: usize::MAX, keeper: usize::MAX }
     }
     pub fn label(&self) -> String {
         let mut extra = match &self.desc { Some(d) => format!(", {d}"), None => String::new() };

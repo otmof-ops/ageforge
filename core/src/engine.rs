@@ -144,6 +144,7 @@ impl State {
             { let t = Instant::now(); st.cleanup(); tick(&mut st.phase_times, "cleanup", t); }
             { let t = Instant::now(); st.spawn_heroes(); tick(&mut st.phase_times, "spawn_heroes", t); }
             { let t = Instant::now(); st.works_year(); tick(&mut st.phase_times, "works_year", t); }
+            { let t = Instant::now(); st.lives_year(); tick(&mut st.phase_times, "lives_year", t); }
             { let t = Instant::now(); st.settle_books(); tick(&mut st.phase_times, "settle_books", t); }
         }
     }
